@@ -1,0 +1,4 @@
+/.task
+/dnsprov
+/config*.yaml
+*_templ.go

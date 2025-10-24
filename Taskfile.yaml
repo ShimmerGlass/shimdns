@@ -1,0 +1,41 @@
+version: "3"
+
+run: when_changed
+
+vars:
+  BIN: "dnsprov"
+
+env:
+  CGO_ENABLED: 0
+
+tasks:
+  ### run
+
+  run:
+    deps: [build]
+    cmds:
+      - ./{{ .BIN }} {{.CLI_ARGS}}
+
+  ### build
+
+  build:
+    deps: [templ]
+    sources:
+      - "**/*.go"
+      - "**/*.templ"
+
+    cmds:
+      - go build .
+
+  templ:
+    sources:
+      - "**/*.templ"
+
+    cmds:
+      - go tool templ generate
+
+  ### tests
+
+  test:
+    cmds:
+      - go test -timeout 3m ./...

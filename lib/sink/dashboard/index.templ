@@ -1,0 +1,42 @@
+package dashboard
+
+import "github.com/ShimmerGlass/shimdns/lib/dns"
+
+
+templ index(records []dns.Record) {
+	<!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <title>AutoDNS dashboard</title>
+
+        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB" crossorigin="anonymous">
+    </head>
+        <body>
+            <div class="container-fluid">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Type</th>
+                            <th>rdata</th>
+                            <th>Source</th>
+                            <th>Source name</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        for _, rec := range records {
+                            <tr>
+                                <td class="font-monospace">{ rec.Name }</td>
+                                <td class="font-monospace">IN { rec.Type }</td>
+                                <td class="font-monospace">{ rec.RData() }</td>
+                                <td>{ rec.Source }</td>
+                                <td>{ rec.SourceName }</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </body>
+    </html>
+}
