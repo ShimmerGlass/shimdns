@@ -1,4 +1,6 @@
 /.task
 /dnsprov
+/shimdns
+/bin
 /config*.yaml
 *_templ.go

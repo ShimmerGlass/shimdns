@@ -27,6 +27,21 @@ tasks:
     cmds:
       - go build .
 
+  build-all:
+    deps: [templ]
+    sources:
+      - "**/*.go"
+      - "**/*.templ"
+
+    cmds:
+      - for:
+          matrix:
+            OS: ['windows', 'linux', 'darwin']
+            ARCH: ['amd64', 'arm64']
+
+        cmd:
+          GOOS={{ .ITEM.OS }} GOARCH={{ .ITEM.ARCH }} go build -o bin/shimdns-{{ .ITEM.OS }}-{{ .ITEM.ARCH }}{{ if eq .ITEM.OS "windows" }}.exe{{ end }} .
+
   templ:
     sources:
       - "**/*.templ"

@@ -1,16 +1,11 @@
-# This workflow will build a golang project
-# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-go
-
-name: Go
+name: Release
 
 on:
   push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
+    tags:
+    - 'v*'
 
 jobs:
-
   build:
     runs-on: ubuntu-latest
     steps:
@@ -26,3 +21,7 @@ jobs:
 
     - name: Test
       run: go tool task test
+
+    - uses: ncipollo/release-action@v1
+      with:
+        artifacts: "bin/*"
