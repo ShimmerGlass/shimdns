@@ -52,5 +52,6 @@ tasks:
   ### tests
 
   test:
+    deps: [templ]
     cmds:
       - go test -timeout 3m ./...
