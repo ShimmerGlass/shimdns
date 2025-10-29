@@ -40,10 +40,20 @@ jobs:
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
 
-    - name: Build and push
+    - name: Build and push AMD64
       uses: docker/build-push-action@v6
       with:
         context: .
         push: true
         build-args: BIN=bin/shimdns-linux-amd64
+        platforms: linux/amd64
+        tags: shimmerglass76472/shimdns:latest,shimmerglass76472/shimdns:${{ github.ref_name }}
+
+    - name: Build and push ARM64
+      uses: docker/build-push-action@v6
+      with:
+        context: .
+        push: true
+        build-args: BIN=bin/shimdns-linux-arm64
+        platforms: linux/arm64
         tags: shimmerglass76472/shimdns:latest,shimmerglass76472/shimdns:${{ github.ref_name }}
