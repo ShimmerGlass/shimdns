@@ -28,3 +28,22 @@ jobs:
     - uses: ncipollo/release-action@v1
       with:
         artifacts: "bin/*"
+
+    - name: Login to Docker Hub
+      uses: docker/login-action@v3
+      with:
+          username: ${{ secrets.DOCKERHUB_USER }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+    - name: Set up QEMU
+      uses: docker/setup-qemu-action@v3
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Build and push
+      uses: docker/build-push-action@v6
+      with:
+        context: .
+        push: true
+        build-args: BIN=bin/shimdns-linux-amd64
+        tags: shimmerglass76472/shimdns:latest,shimmerglass76472/shimdns:${{ github.ref_name }}
