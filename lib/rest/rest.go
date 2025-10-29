@@ -70,7 +70,7 @@ func reqInternal[T any](ctx context.Context, method string, r Request, body any)
 	if err != nil {
 		return data, err
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 
 	if res.StatusCode >= 400 {
 		body, err := io.ReadAll(res.Body)

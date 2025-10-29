@@ -56,6 +56,6 @@ func (d *HTTP) register(mux *http.ServeMux) {
 		recs := d.records
 		d.lock.Unlock()
 
-		json.NewEncoder(w).Encode(dns.Records{Records: recs})
+		_ = json.NewEncoder(w).Encode(dns.Records{Records: recs})
 	})
 }

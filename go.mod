@@ -42,9 +42,11 @@ require (
 	github.com/go-task/template v0.2.0 // indirect
 	github.com/golang/groupcache v0.0.0-20241129210726-2c02b8208cf8 // indirect
 	github.com/google/uuid v1.6.0 // indirect
+	github.com/gordonklaus/ineffassign v0.2.0 // indirect
 	github.com/jbenet/go-context v0.0.0-20150711004518-d14ea06fba99 // indirect
 	github.com/joho/godotenv v1.5.1 // indirect
 	github.com/kevinburke/ssh_config v1.2.0 // indirect
+	github.com/kisielk/errcheck v1.9.0 // indirect
 	github.com/klauspost/compress v1.17.4 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.7 // indirect
 	github.com/klauspost/pgzip v1.2.6 // indirect
@@ -82,4 +84,6 @@ require (
 tool (
 	github.com/a-h/templ/cmd/templ
 	github.com/go-task/task/v3/cmd/task
+	github.com/gordonklaus/ineffassign
+	github.com/kisielk/errcheck
 )

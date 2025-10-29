@@ -53,6 +53,6 @@ func (d *Dashboard) register(mux *http.ServeMux) {
 		recs := d.records
 		d.lock.Unlock()
 
-		index(recs).Render(r.Context(), w)
+		_ = index(recs).Render(r.Context(), w)
 	})
 }
