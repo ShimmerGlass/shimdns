@@ -1,8 +1,12 @@
-from alpine:3
+FROM golang:alpine AS build
 
-ARG BIN
+RUN mkdir /app
+COPY . /app
+WORKDIR /app
+RUN go tool task build
 
-COPY ${BIN} /shimdns
-RUN mkdir /config
+FROM alpine AS run
+
+COPY --from=build /app/bin/shimdns /shimdns
 
 CMD [ "/shimdns", "-c", "/config/config.yaml" ]

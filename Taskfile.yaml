@@ -25,7 +25,7 @@ tasks:
       - "**/*.templ"
 
     cmds:
-      - go build .
+      - go build -o bin/shimdns .
 
   build-all:
     deps: [templ]

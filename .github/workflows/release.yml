@@ -12,48 +12,41 @@ jobs:
       contents: write
 
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - name: Set up Go
-      uses: actions/setup-go@v4
-      with:
-        go-version: '1.25'
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.25'
 
-    - name: Test
-      run: go tool task test
+      - name: Test
+        run: go tool task test
 
-    - name: Build
-      run: go tool task build-all
+      - name: Build
+        run: go tool task build-all
 
-    - uses: ncipollo/release-action@v1
-      with:
-        artifacts: "bin/*"
+      - uses: ncipollo/release-action@v1
+        with:
+          artifacts: "bin/*"
 
-    - name: Login to Docker Hub
-      uses: docker/login-action@v3
-      with:
-          username: ${{ secrets.DOCKERHUB_USER }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-    - name: Set up QEMU
-      uses: docker/setup-qemu-action@v3
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+            username: ${{ secrets.DOCKERHUB_USER }}
+            password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
 
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-    - name: Build and push AMD64
-      uses: docker/build-push-action@v6
-      with:
-        context: .
-        push: true
-        build-args: BIN=bin/shimdns-linux-amd64
-        platforms: linux/amd64
-        tags: shimmerglass76472/shimdns:latest,shimmerglass76472/shimdns:${{ github.ref_name }}
 
-    - name: Build and push ARM64
-      uses: docker/build-push-action@v6
-      with:
-        context: .
-        push: true
-        build-args: BIN=bin/shimdns-linux-arm64
-        platforms: linux/arm64
-        tags: shimmerglass76472/shimdns:latest,shimmerglass76472/shimdns:${{ github.ref_name }}
+      - name: Build and push ARM64
+        uses: docker/build-push-action@v6
+        with:
+          push: true
+          platforms: linux/arm64,linux/amd64
+          tags: shimmerglass76472/shimdns:latest,shimmerglass76472/shimdns:${{ github.ref_name }}
