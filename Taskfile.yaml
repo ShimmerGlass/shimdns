@@ -3,7 +3,7 @@ version: "3"
 run: when_changed
 
 vars:
-  BIN: "dnsprov"
+  BIN: "bin/shimdns"
 
 env:
   CGO_ENABLED: 0
@@ -25,7 +25,7 @@ tasks:
       - "**/*.templ"
 
     cmds:
-      - go build -o bin/shimdns .
+      - go build -o {{ .BIN }} .
 
   build-all:
     deps: [templ]
