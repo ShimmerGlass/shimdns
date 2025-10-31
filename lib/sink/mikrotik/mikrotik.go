@@ -58,7 +58,7 @@ func (m *Mikrotik) write(ctx context.Context, records []dns.Record) error {
 		found := false
 
 		for _, e := range current {
-			match, err := entryMatchesRecord(e, rec)
+			match, err := m.entryMatchesRecord(e, rec)
 			if err != nil {
 				return err
 			}
@@ -78,7 +78,7 @@ func (m *Mikrotik) write(ctx context.Context, records []dns.Record) error {
 		found := false
 
 		for _, rec := range records {
-			match, err := entryMatchesRecord(e, rec)
+			match, err := m.entryMatchesRecord(e, rec)
 			if err != nil {
 				return err
 			}
@@ -156,7 +156,11 @@ func (m *Mikrotik) recordToEntry(rec dns.Record) (entry, bool, error) {
 	}
 }
 
-func entryMatchesRecord(e entry, rec dns.Record) (bool, error) {
+func (m *Mikrotik) entryMatchesRecord(e entry, rec dns.Record) (bool, error) {
+	if e.Comment != m.cfg.Comment {
+		return false, nil
+	}
+
 	switch rec.Type {
 
 	case dns.A, dns.AAAA:
