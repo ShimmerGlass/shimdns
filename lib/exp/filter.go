@@ -82,6 +82,23 @@ func (f *Filter) Match(rec dns.Record) (bool, error) {
 	return true, nil
 }
 
+func (f *Filter) Filter(recs []dns.Record) ([]dns.Record, error) {
+	res := make([]dns.Record, 0, len(recs))
+
+	for _, rec := range recs {
+		ok, err := f.Match(rec)
+		if err != nil {
+			return nil, err
+		}
+
+		if ok {
+			res = append(res, rec)
+		}
+	}
+
+	return res, nil
+}
+
 func (f *Filter) UnmarshalYAML(value *yaml.Node) error {
 	var cfg FilterConfig
 	err := value.Decode(&cfg)

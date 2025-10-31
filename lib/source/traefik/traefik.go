@@ -32,6 +32,10 @@ func New(log *slog.Logger, cfg Config) (*Traefik, error) {
 		cfg.Timeout = 10 * time.Second
 	}
 
+	if cfg.Mode == "" {
+		cfg.Mode = modeAddress
+	}
+
 	return &Traefik{
 		log: log.With("source", Type, "source_name", cfg.Name),
 		cfg: cfg,
@@ -50,6 +54,34 @@ func (t *Traefik) Name() string {
 }
 
 func (t *Traefik) Read(ctx context.Context) ([]dns.Record, error) {
+	var recs []dns.Record
+	var err error
+
+	switch t.cfg.Mode {
+	case modeAddress:
+		recs, err = t.readAddress(ctx)
+
+	case modeCname:
+		recs, err = t.readCname(ctx)
+
+	default:
+		return nil, fmt.Errorf("invalid mode %q", t.cfg.Mode)
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	recs = lo.Uniq(recs)
+	recs, err = t.cfg.Filter.Filter(recs)
+	if err != nil {
+		return nil, err
+	}
+
+	return recs, nil
+}
+
+func (t *Traefik) readAddress(ctx context.Context) ([]dns.Record, error) {
 	eps, err := t.entrypoints(ctx)
 	if err != nil {
 		return nil, err
@@ -81,36 +113,65 @@ func (t *Traefik) Read(ctx context.Context) ([]dns.Record, error) {
 					continue
 				}
 
-				addr := epToAddr[ep]
-				rec := dns.Record{
-					Name:       host,
-					Address:    addr,
-					Source:     Type,
-					SourceName: t.cfg.Name,
+				addrs := t.cfg.Addresses
+				epAddr, ok := epToAddr[ep]
+				if len(addrs) == 0 && ok {
+					addrs = append(addrs, epAddr)
 				}
 
-				if addr.Is4() {
-					rec.Type = dns.A
-				} else {
-					rec.Type = dns.AAAA
-				}
+				for _, addr := range addrs {
+					rec := dns.Record{
+						Name:       host,
+						Address:    addr,
+						Source:     Type,
+						SourceName: t.cfg.Name,
+					}
 
-				ok, err := t.cfg.Filter.Match(rec)
-				if err != nil {
-					return nil, err
+					if addr.Is4() {
+						rec.Type = dns.A
+					} else {
+						rec.Type = dns.AAAA
+					}
 				}
-
-				if !ok {
-					t.log.Debug("filter drop", "record", rec)
-					continue
-				}
-
-				res = append(res, rec)
 			}
 		}
+
+		return res, nil
 	}
 
-	res = lo.Uniq(res)
+	return res, nil
+}
+
+func (t *Traefik) readCname(ctx context.Context) ([]dns.Record, error) {
+	routers, err := t.routers(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	res := []dns.Record{}
+
+	for _, router := range routers {
+		epOK := false
+		for _, ep := range router.EntryPoints {
+			if t.allowedEntrypoints[ep] {
+				epOK = true
+				break
+			}
+		}
+		if !epOK {
+			continue
+		}
+
+		for host := range routersHosts(router) {
+			res = append(res, dns.Record{
+				Type:       dns.CNAME,
+				Name:       dns.NormName(host),
+				Target:     t.cfg.Target,
+				Source:     Type,
+				SourceName: t.cfg.Name,
+			})
+		}
+	}
 
 	return res, nil
 }
