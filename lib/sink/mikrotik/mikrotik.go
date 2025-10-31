@@ -55,6 +55,15 @@ func (m *Mikrotik) write(ctx context.Context, records []dns.Record) error {
 	toRemove := []entry{}
 
 	for _, rec := range records {
+		ok, err := m.cfg.Filter.Match(rec)
+		if err != nil {
+			return err
+		}
+
+		if !ok {
+			continue
+		}
+
 		found := false
 
 		for _, e := range current {
