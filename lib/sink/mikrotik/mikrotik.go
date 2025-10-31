@@ -170,6 +170,10 @@ func (m *Mikrotik) entryMatchesRecord(e entry, rec dns.Record) (bool, error) {
 		return false, nil
 	}
 
+	if e.TTL != m.cfg.TTL {
+		return false, nil
+	}
+
 	switch rec.Type {
 
 	case dns.A, dns.AAAA:
