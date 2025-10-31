@@ -132,6 +132,8 @@ func (t *Traefik) readAddress(ctx context.Context) ([]dns.Record, error) {
 					} else {
 						rec.Type = dns.AAAA
 					}
+
+					res = append(res, rec)
 				}
 			}
 		}
