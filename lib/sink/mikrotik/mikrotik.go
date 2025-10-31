@@ -136,19 +136,9 @@ func (m *Mikrotik) recordToEntry(rec dns.Record) (entry, bool, error) {
 	// TODO: strip end dot
 
 	switch rec.Type {
-	case dns.A:
+	case dns.A, dns.AAAA:
 		return entry{
-			Type:     "A",
-			Name:     rec.Name,
-			Address:  rec.Address.String(),
-			Comment:  m.cfg.Comment,
-			TTL:      "1d",
-			Disabled: "false",
-		}, true, nil
-
-	case dns.AAAA:
-		return entry{
-			Type:     "AAAA",
+			Type:     string(rec.Type),
 			Name:     rec.Name,
 			Address:  rec.Address.String(),
 			Comment:  m.cfg.Comment,
