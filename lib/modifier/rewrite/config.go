@@ -6,9 +6,12 @@ import (
 
 type Config struct {
 	Filter exp.Filter `yaml:"filter"`
+	Set    SetConfig  `yaml:"set"`
+}
 
-	RecordType string `yaml:"record_type"`
-	Name       string `yaml:"name"`
+type SetConfig struct {
+	Type string `yaml:"type"`
+	Name string `yaml:"name"`
 
 	// for A & AAAA
 	Address string `yaml:"address"`

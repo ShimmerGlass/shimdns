@@ -33,71 +33,71 @@ func New(log *slog.Logger, cfg Config) (*Rewrite, error) {
 	}
 
 	var err error
-	if cfg.RecordType != "" {
-		r.rtype, err = exp.Compile[string](cfg.RecordType)
+	if cfg.Set.Type != "" {
+		r.rtype, err = exp.Compile[string](cfg.Set.Type)
 		if err != nil {
 			return nil, fmt.Errorf("type: %w", err)
 		}
 	}
 
-	if cfg.Name != "" {
-		r.name, err = exp.Compile[string](cfg.Name)
+	if cfg.Set.Name != "" {
+		r.name, err = exp.Compile[string](cfg.Set.Name)
 		if err != nil {
 			return nil, fmt.Errorf("name: %w", err)
 		}
 	}
 
-	if cfg.Address != "" {
-		r.address, err = exp.Compile[netip.Addr](cfg.Address)
+	if cfg.Set.Address != "" {
+		r.address, err = exp.Compile[netip.Addr](cfg.Set.Address)
 		if err != nil {
 			return nil, fmt.Errorf("address: %w", err)
 		}
 	}
 
-	if cfg.Ptr != "" {
-		r.ptr, err = exp.Compile[string](cfg.Ptr)
+	if cfg.Set.Ptr != "" {
+		r.ptr, err = exp.Compile[string](cfg.Set.Ptr)
 		if err != nil {
 			return nil, fmt.Errorf("ptr: %w", err)
 		}
 	}
 
-	if cfg.Target != "" {
-		r.target, err = exp.Compile[string](cfg.Target)
+	if cfg.Set.Target != "" {
+		r.target, err = exp.Compile[string](cfg.Set.Target)
 		if err != nil {
 			return nil, fmt.Errorf("target: %w", err)
 		}
 	}
 
-	if cfg.Priority != "" {
-		r.priority, err = exp.Compile[int](cfg.Priority)
+	if cfg.Set.Priority != "" {
+		r.priority, err = exp.Compile[int](cfg.Set.Priority)
 		if err != nil {
 			return nil, fmt.Errorf("priority: %w", err)
 		}
 	}
 
-	if cfg.Weight != "" {
-		r.weight, err = exp.Compile[int](cfg.Weight)
+	if cfg.Set.Weight != "" {
+		r.weight, err = exp.Compile[int](cfg.Set.Weight)
 		if err != nil {
 			return nil, fmt.Errorf("weight: %w", err)
 		}
 	}
 
-	if cfg.Port != "" {
-		r.port, err = exp.Compile[int](cfg.Port)
+	if cfg.Set.Port != "" {
+		r.port, err = exp.Compile[int](cfg.Set.Port)
 		if err != nil {
 			return nil, fmt.Errorf("port: %w", err)
 		}
 	}
 
-	if cfg.Preference != "" {
-		r.preference, err = exp.Compile[int](cfg.Preference)
+	if cfg.Set.Preference != "" {
+		r.preference, err = exp.Compile[int](cfg.Set.Preference)
 		if err != nil {
 			return nil, fmt.Errorf("preference: %w", err)
 		}
 	}
 
-	if cfg.Mx != "" {
-		r.mx, err = exp.Compile[string](cfg.Mx)
+	if cfg.Set.Mx != "" {
+		r.mx, err = exp.Compile[string](cfg.Set.Mx)
 		if err != nil {
 			return nil, fmt.Errorf("mx: %w", err)
 		}

@@ -27,8 +27,10 @@ var testCases = []testCase{
 			Address:    netip.MustParseAddr("127.0.0.1"),
 		},
 		Cfg: Config{
-			Name:    `record.name + "baz."`,
-			Address: `ip("192.168.1.1")`,
+			Set: SetConfig{
+				Name:    `record.name + "baz."`,
+				Address: `ip("192.168.1.1")`,
+			},
 		},
 		Out: dns.Record{
 			Type:       dns.A,
