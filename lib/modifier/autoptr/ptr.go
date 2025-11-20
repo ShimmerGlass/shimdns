@@ -71,7 +71,7 @@ func (p *PTR) Modify(ctx context.Context, records []dns.Record) ([]dns.Record, e
 			Type:   dns.PTR,
 			Name:   ptr,
 			Ptr:    rec.Name,
-			Source: "autoptr",
+			Source: p.id,
 		})
 
 		present[rec.Address] = struct{}{}

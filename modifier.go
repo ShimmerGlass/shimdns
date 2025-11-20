@@ -25,6 +25,9 @@ func (s *ModifierConfig) UnmarshalYAML(node *yaml.Node) error {
 		return err
 	}
 
+	s.Type = cfg.Type
+	s.Name = cfg.Name
+
 	switch cfg.Type {
 
 	case autoptr.Type:
