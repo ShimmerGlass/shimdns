@@ -3,8 +3,10 @@ package main
 import (
 	"fmt"
 	"log/slog"
+	"strconv"
 
 	"github.com/ShimmerGlass/shimdns/lib/source"
+	"github.com/ShimmerGlass/shimdns/lib/source/file"
 	httpsource "github.com/ShimmerGlass/shimdns/lib/source/http"
 	mikrotikdhcp "github.com/ShimmerGlass/shimdns/lib/source/mikrotik_dhcp"
 	"github.com/ShimmerGlass/shimdns/lib/source/netbox"
@@ -73,37 +75,41 @@ func loadSources(log *slog.Logger, cfg Config) ([]source.Source, error) {
 	sources := []source.Source{}
 
 	for i, anySrcCfg := range cfg.Sources {
+		name := anySrcCfg.Name
+		if name == "" {
+			name = strconv.Itoa(i)
+		}
+		id := fmt.Sprintf("%s.%s", anySrcCfg.Type, name)
+
+		srcLog := log.With("source", id)
+
 		var src source.Source
 		var err error
 
 		switch srcCfg := anySrcCfg.Cfg.(type) {
 
+		case file.Config:
+			src, err = file.New(srcLog, srcCfg, id)
+
 		case traefik.Config:
-			src, err = traefik.New(log, srcCfg)
+			src, err = traefik.New(srcLog, srcCfg, id)
 
 		case netbox.Config:
-			src, err = netbox.New(log, srcCfg)
+			src, err = netbox.New(srcLog, srcCfg, id)
 
 		case httpsource.Config:
-			src, err = httpsource.New(log, srcCfg)
+			src, err = httpsource.New(srcLog, srcCfg, id)
 
 		case mikrotikdhcp.Config:
-			src, err = mikrotikdhcp.New(log, srcCfg)
+			src, err = mikrotikdhcp.New(srcLog, srcCfg, id)
 
 		default:
-			return nil, fmt.Errorf("source #%d: unknown type %q", i, anySrcCfg.Type)
+			return nil, fmt.Errorf("source %s: unknown type %q", id, anySrcCfg.Type)
 		}
 
 		if err != nil {
-			name := anySrcCfg.Type
-			if anySrcCfg.Name != "" {
-				name += "." + anySrcCfg.Name
-			}
-			name += fmt.Sprintf(" #%d", i)
-
-			return nil, fmt.Errorf("%s: %w", name, err)
+			return nil, fmt.Errorf("%s: %w", id, err)
 		}
-
 		sources = append(sources, src)
 	}
 

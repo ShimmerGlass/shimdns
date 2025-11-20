@@ -10,16 +10,24 @@ import (
 	"github.com/ShimmerGlass/shimdns/lib/dns"
 )
 
+const Type = "autoptr"
+
 type PTR struct {
 	log *slog.Logger
 	cfg Config
+	id  string
 }
 
-func New(log *slog.Logger, cfg Config) (*PTR, error) {
+func New(log *slog.Logger, cfg Config, id string) (*PTR, error) {
 	return &PTR{
-		log: log.With("modifier", "autoptr"),
+		log: log,
 		cfg: cfg,
+		id:  id,
 	}, nil
+}
+
+func (p *PTR) ID() string {
+	return p.id
 }
 
 func (p *PTR) Modify(ctx context.Context, records []dns.Record) ([]dns.Record, error) {

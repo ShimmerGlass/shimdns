@@ -14,20 +14,26 @@ import (
 type Dashboard struct {
 	log *slog.Logger
 	cfg Config
+	id  string
 
 	lock    sync.Mutex
 	records []dns.Record
 }
 
-func New(log *slog.Logger, cfg Config, mux *http.ServeMux) (*Dashboard, error) {
+func New(log *slog.Logger, cfg Config, id string, mux *http.ServeMux) (*Dashboard, error) {
 	d := &Dashboard{
-		log: log.With("sink", "dashboard"),
+		log: log,
 		cfg: cfg,
+		id:  id,
 	}
 
 	d.register(mux)
 
 	return d, nil
+}
+
+func (d *Dashboard) ID() string {
+	return d.id
 }
 
 func (d *Dashboard) Write(ctx context.Context, recs []dns.Record) error {

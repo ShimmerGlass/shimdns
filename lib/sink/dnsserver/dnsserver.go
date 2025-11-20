@@ -15,20 +15,26 @@ import (
 type DNSServer struct {
 	log *slog.Logger
 	cfg Config
+	id  string
 
 	lock  sync.RWMutex
 	store *store
 }
 
-func New(log *slog.Logger, cfg Config) (*DNSServer, error) {
+func New(log *slog.Logger, cfg Config, id string) (*DNSServer, error) {
 	d := &DNSServer{
-		log:   log.With("sink", "dnsserver"),
+		log:   log,
 		cfg:   cfg,
+		id:    id,
 		store: &store{},
 	}
 	go d.start()
 
 	return d, nil
+}
+
+func (d *DNSServer) ID() string {
+	return d.id
 }
 
 func (d *DNSServer) start() {

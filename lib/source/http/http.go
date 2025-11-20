@@ -14,29 +14,23 @@ const Type = "http"
 type HTTP struct {
 	log *slog.Logger
 	cfg Config
+	id  string
 }
 
-func New(log *slog.Logger, cfg Config) (*HTTP, error) {
-	if cfg.Name == "" {
-		cfg.Name = cfg.URL
-	}
-
+func New(log *slog.Logger, cfg Config, id string) (*HTTP, error) {
 	if cfg.Timeout == 0 {
 		cfg.Timeout = 10 * time.Second
 	}
 
 	return &HTTP{
-		log: log.With("source", Type, "source_name", cfg.Name),
+		log: log,
 		cfg: cfg,
+		id:  id,
 	}, nil
 }
 
-func (h *HTTP) Type() string {
-	return Type
-}
-
-func (h *HTTP) Name() string {
-	return h.cfg.Name
+func (h *HTTP) ID() string {
+	return h.id
 }
 
 func (h *HTTP) Read(ctx context.Context) ([]dns.Record, error) {
@@ -63,8 +57,7 @@ func (h *HTTP) Read(ctx context.Context) ([]dns.Record, error) {
 		}
 
 		if rec.Source == "" || !h.cfg.KeepOriginalSource {
-			rec.Source = Type
-			rec.SourceName = h.cfg.Name
+			rec.Source = h.id
 		}
 
 		recs = append(recs, rec)

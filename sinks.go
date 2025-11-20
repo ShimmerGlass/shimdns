@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strconv"
 
 	"github.com/ShimmerGlass/shimdns/lib/sink"
 	"github.com/ShimmerGlass/shimdns/lib/sink/dashboard"
@@ -22,6 +23,7 @@ const (
 
 type SinkConfig struct {
 	Type string
+	Name string
 	Cfg  any
 }
 
@@ -75,44 +77,40 @@ func (s *SinkConfig) UnmarshalYAML(node *yaml.Node) error {
 func loadSinks(log *slog.Logger, cfg Config, httpMux *http.ServeMux) ([]sink.Sink, error) {
 	sinks := []sink.Sink{}
 
-	for _, anySinkCfg := range cfg.Sinks {
+	for i, anySinkCfg := range cfg.Sinks {
+		name := anySinkCfg.Name
+		if name == "" {
+			name = strconv.Itoa(i)
+		}
+		id := fmt.Sprintf("%s.%s", anySinkCfg.Type, name)
+
+		sinkLog := log.With("sink", id)
+
+		var snk sink.Sink
+		var err error
+
 		switch sinkCfg := anySinkCfg.Cfg.(type) {
 
 		case dashboard.Config:
-			src, err := dashboard.New(log, sinkCfg, httpMux)
-			if err != nil {
-				return nil, fmt.Errorf("dashboard: %w", err)
-			}
-
-			sinks = append(sinks, src)
+			snk, err = dashboard.New(sinkLog, sinkCfg, id, httpMux)
 
 		case mikrotik.Config:
-			src, err := mikrotik.New(log, sinkCfg)
-			if err != nil {
-				return nil, fmt.Errorf("mikrotik: %w", err)
-			}
-
-			sinks = append(sinks, src)
+			snk, err = mikrotik.New(sinkLog, sinkCfg, id)
 
 		case dnsserver.Config:
-			src, err := dnsserver.New(log, sinkCfg)
-			if err != nil {
-				return nil, fmt.Errorf("dnsserver: %w", err)
-			}
-
-			sinks = append(sinks, src)
+			snk, err = dnsserver.New(sinkLog, sinkCfg, id)
 
 		case httpsink.Config:
-			src, err := httpsink.New(log, sinkCfg, httpMux)
-			if err != nil {
-				return nil, fmt.Errorf("dnsserver: %w", err)
-			}
-
-			sinks = append(sinks, src)
+			snk, err = httpsink.New(sinkLog, sinkCfg, id, httpMux)
 
 		default:
-			return nil, fmt.Errorf("unknown sink type %s", anySinkCfg.Type)
+			return nil, fmt.Errorf("sink %s: unknown type %s", id, anySinkCfg.Type)
 		}
+
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", id, err)
+		}
+		sinks = append(sinks, snk)
 	}
 
 	return sinks, nil

@@ -7,5 +7,6 @@ import (
 )
 
 type Modifier interface {
+	ID() string
 	Modify(ctx context.Context, recs []dns.Record) ([]dns.Record, error)
 }

@@ -16,28 +16,26 @@ const Type = "netbox"
 type Netbox struct {
 	log *slog.Logger
 	cfg Config
+	id  string
 
 	client *netbox.APIClient
 }
 
-func New(log *slog.Logger, cfg Config) (*Netbox, error) {
+func New(log *slog.Logger, cfg Config, id string) (*Netbox, error) {
 	if cfg.Timeout == 0 {
 		cfg.Timeout = 10 * time.Second
 	}
 
 	return &Netbox{
-		log:    log.With("source", Type, "source_name", cfg.Name),
+		log:    log,
 		cfg:    cfg,
+		id:     id,
 		client: netbox.NewAPIClientFor(cfg.URL, cfg.Token),
 	}, nil
 }
 
-func (n *Netbox) Type() string {
-	return Type
-}
-
-func (n *Netbox) Name() string {
-	return n.cfg.Name
+func (n *Netbox) ID() string {
+	return n.id
 }
 
 func (n *Netbox) Read(ctx context.Context) ([]dns.Record, error) {
@@ -96,10 +94,9 @@ func (n *Netbox) addrToRecord(addr netbox.IPAddress) (dns.Record, error) {
 	}
 
 	rec := dns.Record{
-		Name:       name,
-		Address:    ip.Addr(),
-		Source:     Type,
-		SourceName: n.cfg.Name,
+		Name:    name,
+		Address: ip.Addr(),
+		Source:  n.id,
 	}
 
 	if ip.Addr().Is4() {

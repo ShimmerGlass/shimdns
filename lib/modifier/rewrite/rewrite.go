@@ -10,9 +10,12 @@ import (
 	"github.com/ShimmerGlass/shimdns/lib/exp"
 )
 
+const Type = "rewrite"
+
 type Rewrite struct {
 	log *slog.Logger
 	cfg Config
+	id  string
 
 	rtype      *exp.Prog[string]
 	name       *exp.Prog[string]
@@ -26,10 +29,11 @@ type Rewrite struct {
 	mx         *exp.Prog[string]
 }
 
-func New(log *slog.Logger, cfg Config) (*Rewrite, error) {
+func New(log *slog.Logger, cfg Config, id string) (*Rewrite, error) {
 	r := &Rewrite{
-		log: log.With("modifier", "rewrite"),
+		log: log,
 		cfg: cfg,
+		id:  id,
 	}
 
 	var err error
@@ -106,9 +110,13 @@ func New(log *slog.Logger, cfg Config) (*Rewrite, error) {
 	return r, nil
 }
 
-func (p *Rewrite) Modify(ctx context.Context, records []dns.Record) ([]dns.Record, error) {
+func (r *Rewrite) ID() string {
+	return r.id
+}
+
+func (r *Rewrite) Modify(ctx context.Context, records []dns.Record) ([]dns.Record, error) {
 	for i, rec := range records {
-		ok, err := p.cfg.Filter.Match(rec)
+		ok, err := r.cfg.Filter.Match(rec)
 		if err != nil {
 			return nil, err
 		}
@@ -116,80 +124,80 @@ func (p *Rewrite) Modify(ctx context.Context, records []dns.Record) ([]dns.Recor
 			continue
 		}
 
-		if p.rtype != nil {
-			v, err := p.rtype.Run(rec)
+		if r.rtype != nil {
+			v, err := r.rtype.Run(rec)
 			if err != nil {
 				return nil, fmt.Errorf("type: %w", err)
 			}
 			rec.Type = dns.Type(v)
 		}
 
-		if p.name != nil {
-			v, err := p.name.Run(rec)
+		if r.name != nil {
+			v, err := r.name.Run(rec)
 			if err != nil {
 				return nil, fmt.Errorf("name: %w", err)
 			}
 			rec.Name = dns.NormName(v)
 		}
 
-		if p.address != nil {
-			v, err := p.address.Run(rec)
+		if r.address != nil {
+			v, err := r.address.Run(rec)
 			if err != nil {
 				return nil, fmt.Errorf("address: %w", err)
 			}
 			rec.Address = v
 		}
 
-		if p.ptr != nil {
-			v, err := p.ptr.Run(rec)
+		if r.ptr != nil {
+			v, err := r.ptr.Run(rec)
 			if err != nil {
 				return nil, fmt.Errorf("ptr: %w", err)
 			}
 			rec.Ptr = v
 		}
 
-		if p.target != nil {
-			v, err := p.target.Run(rec)
+		if r.target != nil {
+			v, err := r.target.Run(rec)
 			if err != nil {
 				return nil, fmt.Errorf("target: %w", err)
 			}
 			rec.Target = v
 		}
 
-		if p.priority != nil {
-			v, err := p.priority.Run(rec)
+		if r.priority != nil {
+			v, err := r.priority.Run(rec)
 			if err != nil {
 				return nil, fmt.Errorf("priority: %w", err)
 			}
 			rec.Priority = uint16(v)
 		}
 
-		if p.weight != nil {
-			v, err := p.weight.Run(rec)
+		if r.weight != nil {
+			v, err := r.weight.Run(rec)
 			if err != nil {
 				return nil, fmt.Errorf("weight: %w", err)
 			}
 			rec.Weight = uint16(v)
 		}
 
-		if p.port != nil {
-			v, err := p.port.Run(rec)
+		if r.port != nil {
+			v, err := r.port.Run(rec)
 			if err != nil {
 				return nil, fmt.Errorf("port: %w", err)
 			}
 			rec.Port = uint16(v)
 		}
 
-		if p.preference != nil {
-			v, err := p.preference.Run(rec)
+		if r.preference != nil {
+			v, err := r.preference.Run(rec)
 			if err != nil {
 				return nil, fmt.Errorf("preference: %w", err)
 			}
 			rec.Preference = uint16(v)
 		}
 
-		if p.mx != nil {
-			v, err := p.mx.Run(rec)
+		if r.mx != nil {
+			v, err := r.mx.Run(rec)
 			if err != nil {
 				return nil, fmt.Errorf("mx: %w", err)
 			}

@@ -1,4 +1,4 @@
-package http
+package file
 
 import (
 	"context"
@@ -15,25 +15,19 @@ const Type = "file"
 type File struct {
 	log *slog.Logger
 	cfg Config
+	id  string
 }
 
-func New(log *slog.Logger, cfg Config) (*File, error) {
-	if cfg.Name == "" {
-		cfg.Name = cfg.Path
-	}
-
+func New(log *slog.Logger, cfg Config, id string) (*File, error) {
 	return &File{
-		log: log.With("source", Type, "source_name", cfg.Name),
+		log: log,
 		cfg: cfg,
+		id:  id,
 	}, nil
 }
 
-func (f *File) Type() string {
-	return Type
-}
-
-func (f *File) Name() string {
-	return f.cfg.Name
+func (f *File) ID() string {
+	return f.id
 }
 
 func (f *File) Read(ctx context.Context) ([]dns.Record, error) {
@@ -51,11 +45,7 @@ func (f *File) Read(ctx context.Context) ([]dns.Record, error) {
 
 	recs := lo.Map(d.Records, func(rec dns.Record, _ int) dns.Record {
 		if rec.Source == "" {
-			rec.Source = Type
-		}
-
-		if rec.SourceName == "" {
-			rec.SourceName = f.cfg.Name
+			rec.Source = f.id
 		}
 
 		return rec

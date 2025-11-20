@@ -7,7 +7,6 @@ import (
 )
 
 type Source interface {
-	Type() string
-	Name() string
+	ID() string
 	Read(ctx context.Context) ([]dns.Record, error)
 }

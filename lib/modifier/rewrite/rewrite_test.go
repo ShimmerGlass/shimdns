@@ -20,11 +20,10 @@ type testCase struct {
 var testCases = []testCase{
 	{
 		In: dns.Record{
-			Type:       dns.A,
-			Source:     "src",
-			SourceName: "src_name",
-			Name:       "foo.bar.",
-			Address:    netip.MustParseAddr("127.0.0.1"),
+			Type:    dns.A,
+			Source:  "src",
+			Name:    "foo.bar.",
+			Address: netip.MustParseAddr("127.0.0.1"),
 		},
 		Cfg: Config{
 			Set: SetConfig{
@@ -33,11 +32,10 @@ var testCases = []testCase{
 			},
 		},
 		Out: dns.Record{
-			Type:       dns.A,
-			Source:     "src",
-			SourceName: "src_name",
-			Name:       "foo.bar.baz.",
-			Address:    netip.MustParseAddr("192.168.1.1"),
+			Type:    dns.A,
+			Source:  "src",
+			Name:    "foo.bar.baz.",
+			Address: netip.MustParseAddr("192.168.1.1"),
 		},
 	},
 }
@@ -45,7 +43,7 @@ var testCases = []testCase{
 func TestRewrite(t *testing.T) {
 	for i, tc := range testCases {
 		t.Run(fmt.Sprint(i), func(t *testing.T) {
-			r, err := New(slog.Default(), tc.Cfg)
+			r, err := New(slog.Default(), tc.Cfg, "test")
 			require.NoError(t, err)
 
 			res, err := r.Modify(context.Background(), []dns.Record{tc.In})

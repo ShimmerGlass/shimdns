@@ -21,7 +21,6 @@ templ index(records []dns.Record) {
                             <th>Type</th>
                             <th>rdata</th>
                             <th>Source</th>
-                            <th>Source name</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -31,7 +30,6 @@ templ index(records []dns.Record) {
                                 <td class="font-monospace">IN { rec.Type }</td>
                                 <td class="font-monospace">{ rec.RData() }</td>
                                 <td>{ rec.Source }</td>
-                                <td>{ rec.SourceName }</td>
                             </tr>
                         }
                     </tbody>

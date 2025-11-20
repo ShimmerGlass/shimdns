@@ -21,8 +21,7 @@ type Record struct {
 	Type Type   `json:"type" expr:"type" yaml:"type"`
 	Name string `json:"name" expr:"name" yaml:"name"`
 
-	Source     string `json:"source" expr:"source" yaml:"source"`
-	SourceName string `json:"source_name" expr:"source_name" yaml:"source_name"`
+	Source string `json:"source" expr:"source" yaml:"source"`
 
 	// for A & AAAA
 	Address netip.Addr `json:"address,omitempty" expr:"address" yaml:"address"`
@@ -70,10 +69,6 @@ func (r Record) LogValue() slog.Value {
 		slog.String("name", r.Name),
 		slog.String("type", string(r.Type)),
 		slog.String("source", r.Source),
-	}
-
-	if r.SourceName != "" {
-		attrs = append(attrs, slog.String("source_name", r.SourceName))
 	}
 
 	switch r.Type {

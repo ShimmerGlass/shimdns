@@ -14,14 +14,16 @@ import (
 type HTTP struct {
 	log *slog.Logger
 	cfg Config
+	id  string
 
 	lock    sync.Mutex
 	records []dns.Record
 }
 
-func New(log *slog.Logger, cfg Config, mux *http.ServeMux) (*HTTP, error) {
+func New(log *slog.Logger, cfg Config, id string, mux *http.ServeMux) (*HTTP, error) {
 	d := &HTTP{
-		log: log.With("sink", "http"),
+		log: log,
+		id:  id,
 		cfg: cfg,
 	}
 
@@ -30,31 +32,35 @@ func New(log *slog.Logger, cfg Config, mux *http.ServeMux) (*HTTP, error) {
 	return d, nil
 }
 
-func (d *HTTP) Write(ctx context.Context, recs []dns.Record) error {
-	d.lock.Lock()
-	d.records = []dns.Record{}
+func (h *HTTP) ID() string {
+	return h.id
+}
+
+func (h *HTTP) Write(ctx context.Context, recs []dns.Record) error {
+	h.lock.Lock()
+	h.records = []dns.Record{}
 
 	for _, rec := range recs {
-		ok, err := d.cfg.Filter.Match(rec)
+		ok, err := h.cfg.Filter.Match(rec)
 		if err != nil {
 			return err
 		}
 
 		if ok {
-			d.records = append(d.records, rec)
+			h.records = append(h.records, rec)
 		}
 	}
 
-	d.lock.Unlock()
+	h.lock.Unlock()
 
 	return nil
 }
 
-func (d *HTTP) register(mux *http.ServeMux) {
-	mux.HandleFunc(fmt.Sprintf("GET %s", d.cfg.Path), func(w http.ResponseWriter, r *http.Request) {
-		d.lock.Lock()
-		recs := d.records
-		d.lock.Unlock()
+func (h *HTTP) register(mux *http.ServeMux) {
+	mux.HandleFunc(fmt.Sprintf("GET %s", h.cfg.Path), func(w http.ResponseWriter, r *http.Request) {
+		h.lock.Lock()
+		recs := h.records
+		h.lock.Unlock()
 
 		_ = json.NewEncoder(w).Encode(dns.Records{Records: recs})
 	})

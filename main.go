@@ -9,6 +9,7 @@ import (
 	"os"
 
 	"github.com/ShimmerGlass/shimdns/lib/prov"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 func main() {
@@ -36,6 +37,7 @@ func run() error {
 	var httpMux *http.ServeMux
 	if cfg.HTTPListenAddr != "" {
 		httpMux = http.NewServeMux()
+		httpMux.Handle("/metrics", promhttp.Handler())
 	}
 
 	sources, err := loadSources(log, cfg)

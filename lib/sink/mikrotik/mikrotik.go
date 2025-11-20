@@ -12,11 +12,12 @@ import (
 type Mikrotik struct {
 	cfg Config
 	log *slog.Logger
+	id  string
 
 	api *api
 }
 
-func New(log *slog.Logger, cfg Config) (*Mikrotik, error) {
+func New(log *slog.Logger, cfg Config, id string) (*Mikrotik, error) {
 	if cfg.TTL == "" {
 		cfg.TTL = defaultTTL
 	}
@@ -25,9 +26,14 @@ func New(log *slog.Logger, cfg Config) (*Mikrotik, error) {
 
 	return &Mikrotik{
 		cfg: cfg,
-		log: log.With("sink", "mikrotik"),
+		log: log,
+		id:  id,
 		api: newAPI(cfg.URL, cfg.User, cfg.Password),
 	}, nil
+}
+
+func (m *Mikrotik) ID() string {
+	return m.id
 }
 
 func (m *Mikrotik) Write(ctx context.Context, records []dns.Record) error {

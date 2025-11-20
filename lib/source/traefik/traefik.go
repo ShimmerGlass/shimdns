@@ -19,15 +19,12 @@ const Type = "traefik"
 type Traefik struct {
 	log *slog.Logger
 	cfg Config
+	id  string
 
 	allowedEntrypoints map[string]bool
 }
 
-func New(log *slog.Logger, cfg Config) (*Traefik, error) {
-	if cfg.Name == "" {
-		cfg.Name = cfg.URL
-	}
-
+func New(log *slog.Logger, cfg Config, id string) (*Traefik, error) {
 	if cfg.Timeout == 0 {
 		cfg.Timeout = 10 * time.Second
 	}
@@ -37,20 +34,17 @@ func New(log *slog.Logger, cfg Config) (*Traefik, error) {
 	}
 
 	return &Traefik{
-		log: log.With("source", Type, "source_name", cfg.Name),
+		log: log,
 		cfg: cfg,
+		id:  id,
 		allowedEntrypoints: lo.SliceToMap(cfg.Entrypoints, func(v string) (string, bool) {
 			return v, true
 		}),
 	}, nil
 }
 
-func (t *Traefik) Type() string {
-	return Type
-}
-
-func (t *Traefik) Name() string {
-	return t.cfg.Name
+func (t *Traefik) ID() string {
+	return t.id
 }
 
 func (t *Traefik) Read(ctx context.Context) ([]dns.Record, error) {
@@ -121,10 +115,9 @@ func (t *Traefik) readAddress(ctx context.Context) ([]dns.Record, error) {
 
 				for _, addr := range addrs {
 					rec := dns.Record{
-						Name:       host,
-						Address:    addr,
-						Source:     Type,
-						SourceName: t.cfg.Name,
+						Name:    host,
+						Address: addr,
+						Source:  t.id,
 					}
 
 					if addr.Is4() {
@@ -164,11 +157,10 @@ func (t *Traefik) readCname(ctx context.Context) ([]dns.Record, error) {
 
 		for host := range routersHosts(router) {
 			res = append(res, dns.Record{
-				Type:       dns.CNAME,
-				Name:       dns.NormName(host),
-				Target:     t.cfg.Target,
-				Source:     Type,
-				SourceName: t.cfg.Name,
+				Type:   dns.CNAME,
+				Name:   dns.NormName(host),
+				Target: t.cfg.Target,
+				Source: t.id,
 			})
 		}
 	}

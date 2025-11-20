@@ -7,5 +7,6 @@ import (
 )
 
 type Sink interface {
+	ID() string
 	Write(ctx context.Context, records []dns.Record) error
 }

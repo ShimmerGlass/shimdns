@@ -15,9 +15,10 @@ const Type = "mikrotik_dhcp"
 type DHCP struct {
 	log *slog.Logger
 	cfg Config
+	id  string
 }
 
-func New(log *slog.Logger, cfg Config) (*DHCP, error) {
+func New(log *slog.Logger, cfg Config, id string) (*DHCP, error) {
 	if cfg.Name == "" {
 		cfg.Name = cfg.URL
 	}
@@ -27,24 +28,21 @@ func New(log *slog.Logger, cfg Config) (*DHCP, error) {
 	}
 
 	return &DHCP{
-		log: log.With("source", Type, "source_name", cfg.Name),
+		log: log,
 		cfg: cfg,
+		id:  id,
 	}, nil
 }
 
-func (h *DHCP) Type() string {
-	return Type
+func (d *DHCP) ID() string {
+	return d.id
 }
 
-func (h *DHCP) Name() string {
-	return h.cfg.Name
-}
-
-func (h *DHCP) Read(ctx context.Context) ([]dns.Record, error) {
-	ctx, cancel := context.WithTimeout(ctx, h.cfg.Timeout)
+func (d *DHCP) Read(ctx context.Context) ([]dns.Record, error) {
+	ctx, cancel := context.WithTimeout(ctx, d.cfg.Timeout)
 	defer cancel()
 
-	leases, err := h.leases(ctx)
+	leases, err := d.leases(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -66,20 +64,19 @@ func (h *DHCP) Read(ctx context.Context) ([]dns.Record, error) {
 		}
 
 		rec := dns.Record{
-			Type:       dns.A,
-			Name:       dns.NormName(lease.Comment),
-			Address:    addr,
-			Source:     Type,
-			SourceName: h.cfg.Name,
+			Type:    dns.A,
+			Name:    dns.NormName(lease.Comment),
+			Address: addr,
+			Source:  d.id,
 		}
 
-		ok, err := h.cfg.Filter.Match(rec)
+		ok, err := d.cfg.Filter.Match(rec)
 		if err != nil {
 			return nil, err
 		}
 
 		if !ok {
-			h.log.Debug("filter drop", "record", rec)
+			d.log.Debug("filter drop", "record", rec)
 			continue
 		}
 
@@ -89,12 +86,12 @@ func (h *DHCP) Read(ctx context.Context) ([]dns.Record, error) {
 	return recs, nil
 }
 
-func (h *DHCP) leases(ctx context.Context) ([]Lease, error) {
+func (d *DHCP) leases(ctx context.Context) ([]Lease, error) {
 	return rest.Get[[]Lease](ctx, rest.Request{
-		URL:  h.cfg.URL,
+		URL:  d.cfg.URL,
 		Path: "/rest/ip/dhcp-server/lease",
 
-		BasicUser: h.cfg.User,
-		BasicPass: h.cfg.Password,
+		BasicUser: d.cfg.User,
+		BasicPass: d.cfg.Password,
 	})
 }
