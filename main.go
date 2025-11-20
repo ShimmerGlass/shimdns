@@ -37,7 +37,7 @@ func run() error {
 	var httpMux *http.ServeMux
 	if cfg.HTTPListenAddr != "" {
 		httpMux = http.NewServeMux()
-		httpMux.Handle("/metrics", promhttp.Handler())
+		httpMux.Handle("GET /metrics", promhttp.Handler())
 	}
 
 	sources, err := loadSources(log, cfg)
