@@ -67,18 +67,21 @@ func (p *Prov) runOnce(ctx context.Context) error {
 		}
 	}
 
-	err = p.writeRecs(ctx, recs)
-	if err != nil {
-		return err
-	}
+	old := lo.Map(p.prev, func(r dns.Record, _ int) string { return r.String() })
+	new := lo.Map(recs, func(r dns.Record, _ int) string { return r.String() })
 
-	removed, added := lo.Difference(p.prev, recs)
+	removed, added := lo.Difference(old, new)
 	for _, rec := range removed {
 		p.log.Info("removed", "record", rec)
 	}
 
 	for _, rec := range added {
 		p.log.Info("added", "record", rec)
+	}
+
+	err = p.writeRecs(ctx, recs)
+	if err != nil {
+		return err
 	}
 
 	p.prev = recs

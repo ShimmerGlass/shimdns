@@ -66,7 +66,6 @@ func (t *Traefik) Read(ctx context.Context) ([]dns.Record, error) {
 		return nil, err
 	}
 
-	recs = lo.Uniq(recs)
 	recs, err = t.cfg.Filter.Filter(recs)
 	if err != nil {
 		return nil, err
@@ -87,6 +86,8 @@ func (t *Traefik) readAddress(ctx context.Context) ([]dns.Record, error) {
 	}
 
 	epToAddr := map[string]netip.Addr{}
+	epHTTP2 := map[string]bool{}
+	epHTTP3 := map[string]bool{}
 	for _, ep := range eps {
 		addrPort, err := netip.ParseAddrPort(ep.Address)
 		if err != nil {
@@ -94,6 +95,8 @@ func (t *Traefik) readAddress(ctx context.Context) ([]dns.Record, error) {
 		}
 
 		epToAddr[ep.Name] = addrPort.Addr()
+		epHTTP2[ep.Name] = ep.HTTP2 != nil
+		epHTTP3[ep.Name] = ep.HTTP3 != nil
 	}
 
 	res := []dns.Record{}
@@ -102,7 +105,24 @@ func (t *Traefik) readAddress(ctx context.Context) ([]dns.Record, error) {
 		for host := range routersHosts(router) {
 			host = dns.NormName(host)
 
+			httpsRec := dns.Record{
+				Type:     dns.HTTPS,
+				Target:   ".",
+				Priority: 1,
+				Name:     host,
+				Alpn:     []string{dns.AlpnHTTP11},
+				Source:   t.id,
+			}
+
+			seenAddrs := map[netip.Addr]bool{}
 			for _, ep := range router.EntryPoints {
+				if epHTTP2[ep] {
+					httpsRec.Alpn = append(httpsRec.Alpn, dns.AlpnHTTP2)
+				}
+				if epHTTP3[ep] {
+					httpsRec.Alpn = append(httpsRec.Alpn, dns.AlpnHTTP3)
+				}
+
 				if _, ok := t.allowedEntrypoints[ep]; len(t.allowedEntrypoints) > 0 && !ok {
 					continue
 				}
@@ -114,6 +134,12 @@ func (t *Traefik) readAddress(ctx context.Context) ([]dns.Record, error) {
 				}
 
 				for _, addr := range addrs {
+					if seenAddrs[addr] {
+						continue
+					}
+
+					seenAddrs[addr] = true
+
 					rec := dns.Record{
 						Name:    host,
 						Address: addr,
@@ -122,12 +148,19 @@ func (t *Traefik) readAddress(ctx context.Context) ([]dns.Record, error) {
 
 					if addr.Is4() {
 						rec.Type = dns.A
+						httpsRec.IPv4Hint = append(httpsRec.IPv4Hint, addr)
 					} else {
 						rec.Type = dns.AAAA
+						httpsRec.IPv6Hint = append(httpsRec.IPv6Hint, addr)
 					}
 
 					res = append(res, rec)
 				}
+			}
+
+			if router.TLS.CertResolver != "" {
+				httpsRec.Alpn = lo.Uniq(httpsRec.Alpn)
+				res = append(res, httpsRec)
 			}
 		}
 	}

@@ -10,6 +10,7 @@ import (
 
 	"github.com/ShimmerGlass/shimdns/lib/dns"
 	dnssrv "github.com/miekg/dns"
+	"github.com/samber/lo"
 )
 
 type DNSServer struct {
@@ -185,6 +186,46 @@ func (d *DNSServer) answer(q dnssrv.Question, res *dnssrv.Msg) {
 				Preference: rec.Preference,
 				Mx:         rec.Mx,
 			})
+		}
+
+	case dnssrv.TypeHTTPS:
+		for _, rec := range d.store.get(q.Name, dns.HTTPS) {
+			drec := &dnssrv.HTTPS{
+				SVCB: dnssrv.SVCB{
+					Hdr: dnssrv.RR_Header{
+						Name:   q.Name,
+						Rrtype: dnssrv.TypeHTTPS,
+						Class:  dnssrv.ClassINET,
+						Ttl:    30,
+					},
+					Priority: rec.Priority,
+					Target:   rec.Target,
+				},
+			}
+
+			if len(rec.Alpn) > 0 {
+				drec.Value = append(drec.Value, &dnssrv.SVCBAlpn{
+					Alpn: rec.Alpn,
+				})
+			}
+
+			if len(rec.IPv4Hint) > 0 {
+				drec.Value = append(drec.Value, &dnssrv.SVCBIPv4Hint{
+					Hint: lo.Map(rec.IPv4Hint, func(a netip.Addr, _ int) net.IP {
+						return addrNetipToNetDotIP(a)
+					}),
+				})
+			}
+
+			if len(rec.IPv6Hint) > 0 {
+				drec.Value = append(drec.Value, &dnssrv.SVCBIPv6Hint{
+					Hint: lo.Map(rec.IPv6Hint, func(a netip.Addr, _ int) net.IP {
+						return addrNetipToNetDotIP(a)
+					}),
+				})
+			}
+
+			res.Answer = append(res.Answer, drec)
 		}
 	}
 }

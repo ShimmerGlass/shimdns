@@ -38,10 +38,11 @@ type entrypoint struct {
 		SanitizePath   bool `json:"sanitizePath"`
 		MaxHeaderBytes int  `json:"maxHeaderBytes"`
 	} `json:"http"`
-	HTTP2 struct {
+	HTTP2 *struct {
 		MaxConcurrentStreams int `json:"maxConcurrentStreams"`
 	} `json:"http2"`
-	UDP struct {
+	HTTP3 *struct{} `json:"http3"`
+	UDP   struct {
 		Timeout string `json:"timeout"`
 	} `json:"udp"`
 	Name string `json:"name"`
