@@ -49,4 +49,4 @@ jobs:
         with:
           push: true
           platforms: linux/arm64,linux/amd64
-          tags: shimmerglass76472/shimdns:latest,shimmerglass76472/shimdns:${{ github.ref_name }}
+          tags: shimmerglass/shimdns:latest,shimmerglass/shimdns:${{ github.ref_name }}
