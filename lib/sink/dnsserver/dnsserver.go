@@ -108,7 +108,7 @@ func (d *DNSServer) answer(q dnssrv.Question, res *dnssrv.Msg) {
 		res.Answer = append(res.Answer, &dnssrv.CNAME{
 			Hdr: dnssrv.RR_Header{
 				Name:   q.Name,
-				Rrtype: dnssrv.TypeA,
+				Rrtype: dnssrv.TypeCNAME,
 				Class:  dnssrv.ClassINET,
 				Ttl:    30,
 			},
@@ -169,7 +169,7 @@ func (d *DNSServer) answer(q dnssrv.Question, res *dnssrv.Msg) {
 			res.Answer = append(res.Answer, &dnssrv.SRV{
 				Hdr: dnssrv.RR_Header{
 					Name:   q.Name,
-					Rrtype: dnssrv.TypePTR,
+					Rrtype: dnssrv.TypeSRV,
 					Class:  dnssrv.ClassINET,
 					Ttl:    30,
 				},
