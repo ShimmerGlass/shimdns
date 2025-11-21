@@ -32,6 +32,14 @@ func (s *SourceConfig) UnmarshalYAML(node *yaml.Node) error {
 
 	switch cfg.Type {
 
+	case file.Type:
+		rcfg := file.Config{}
+		err = node.Decode(&rcfg)
+		if err != nil {
+			return err
+		}
+		s.Cfg = rcfg
+
 	case traefik.Type:
 		rcfg := traefik.Config{}
 		err = node.Decode(&rcfg)
