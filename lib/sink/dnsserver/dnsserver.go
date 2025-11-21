@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/netip"
 	"sync"
+	"time"
 
 	"github.com/ShimmerGlass/shimdns/lib/dns"
 	dnssrv "github.com/miekg/dns"
@@ -91,6 +92,11 @@ func (d *DNSServer) handler(w dnssrv.ResponseWriter, req *dnssrv.Msg) {
 }
 
 func (d *DNSServer) answer(q dnssrv.Question, res *dnssrv.Msg) {
+	start := time.Now()
+	defer func() {
+		metricResponseTime.WithLabelValues(d.id, dnssrv.TypeToString[q.Qtype]).Observe(time.Since(start).Seconds())
+	}()
+
 	d.lock.RLock()
 	defer d.lock.RUnlock()
 
