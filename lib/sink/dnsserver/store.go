@@ -5,24 +5,24 @@ import (
 )
 
 type store struct {
-	recs map[string]map[dns.Type][]dns.Record
+	recs map[string]map[string][]dns.Record
 }
 
 func (s *store) reset() {
-	s.recs = map[string]map[dns.Type][]dns.Record{}
+	s.recs = map[string]map[string][]dns.Record{}
 }
 
 func (s *store) add(rec dns.Record) {
 	nameRecs, ok := s.recs[rec.Name]
 	if !ok {
-		nameRecs = map[dns.Type][]dns.Record{}
+		nameRecs = map[string][]dns.Record{}
 		s.recs[rec.Name] = nameRecs
 	}
 
 	nameRecs[rec.Type] = append(nameRecs[rec.Type], rec)
 }
 
-func (s *store) get(name string, t dns.Type) []dns.Record {
+func (s *store) get(name string, t string) []dns.Record {
 	recs, ok := s.recs[name]
 	if !ok {
 		return nil

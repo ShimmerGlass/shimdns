@@ -146,7 +146,7 @@ func (m *Mikrotik) recordToEntry(rec dns.Record) (entry, bool, error) {
 	switch rec.Type {
 	case dns.A, dns.AAAA:
 		return entry{
-			Type:     string(rec.Type),
+			Type:     rec.Type,
 			Name:     rec.Name,
 			Address:  rec.Address.String(),
 			Comment:  m.cfg.Comment,

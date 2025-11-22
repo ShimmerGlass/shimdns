@@ -9,16 +9,14 @@ import (
 	"github.com/samber/lo"
 )
 
-type Type string
-
 const (
-	A     Type = "A"
-	AAAA  Type = "AAAA"
-	PTR   Type = "PTR"
-	CNAME Type = "CNAME"
-	SRV   Type = "SRV"
-	MX    Type = "MX"
-	HTTPS Type = "HTTPS"
+	A     = "A"
+	AAAA  = "AAAA"
+	PTR   = "PTR"
+	CNAME = "CNAME"
+	SRV   = "SRV"
+	MX    = "MX"
+	HTTPS = "HTTPS"
 )
 
 const (
@@ -28,7 +26,7 @@ const (
 )
 
 type Record struct {
-	Type Type   `json:"type" expr:"type" yaml:"type"`
+	Type string `json:"type" expr:"type" yaml:"type"`
 	Name string `json:"name" expr:"name" yaml:"name"`
 
 	Source string `json:"source" expr:"source" yaml:"source"`
@@ -99,7 +97,7 @@ func (r Record) RData() string {
 func (r Record) LogValue() slog.Value {
 	attrs := []slog.Attr{
 		slog.String("name", r.Name),
-		slog.String("type", string(r.Type)),
+		slog.String("type", r.Type),
 		slog.String("source", r.Source),
 	}
 
