@@ -64,6 +64,14 @@ func (s *SinkConfig) UnmarshalYAML(node *yaml.Node) error {
 		}
 		s.Cfg = rcfg
 
+	case gandi.Type:
+		rcfg := gandi.Config{}
+		err = node.Decode(&rcfg)
+		if err != nil {
+			return err
+		}
+		s.Cfg = rcfg
+
 	default:
 		return fmt.Errorf("unknown sink type %q", cfg.Type)
 	}
@@ -99,6 +107,9 @@ func loadSinks(log *slog.Logger, cfg Config, httpMux *http.ServeMux) ([]sink.Sin
 
 		case httpsink.Config:
 			snk, err = httpsink.New(sinkLog, sinkCfg, id, httpMux)
+
+		case gandi.Config:
+			snk, err = gandi.New(sinkLog, sinkCfg, id)
 
 		default:
 			return nil, fmt.Errorf("sink %s: unknown type %s", id, anySinkCfg.Type)
