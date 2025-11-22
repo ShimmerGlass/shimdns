@@ -5,25 +5,6 @@ import (
 )
 
 type Config struct {
-	Filter exp.Filter `yaml:"filter"`
-	Set    SetConfig  `yaml:"set"`
-}
-
-type SetConfig struct {
-	Type string `yaml:"type"`
-	Name string `yaml:"name"`
-
-	// for A & AAAA
-	Address string `yaml:"address"`
-	// for PTR
-	Ptr string `yaml:"ptr"`
-	// for CNAME & SRV
-	Target string `yaml:"target"`
-	// for SRV
-	Priority string `yaml:"priority"`
-	Weight   string `yaml:"weight"`
-	Port     string `yaml:"port"`
-	// for MX
-	Preference string `yaml:"preference"`
-	Mx         string `yaml:"mx"`
+	Filter exp.Filter        `yaml:"filter"`
+	Set    map[string]string `yaml:"set"`
 }

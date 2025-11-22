@@ -33,6 +33,22 @@ func Compile[T any](exp string, opts ...expr.Option) (*Prog[T], error) {
 	return &Prog[T]{p: p}, nil
 }
 
+func CompileAny(exp string, opts ...expr.Option) (*Prog[any], error) {
+	copts := []expr.Option{
+		expr.Env(env{}),
+	}
+
+	copts = append(copts, funcs...)
+	copts = append(copts, opts...)
+
+	p, err := expr.Compile(exp, copts...)
+	if err != nil {
+		return nil, err
+	}
+
+	return &Prog[any]{p: p}, nil
+}
+
 func (p *Prog[T]) Run(rec dns.Record) (T, error) {
 	var z T
 

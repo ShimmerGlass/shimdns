@@ -4,10 +4,11 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"net/netip"
+	"reflect"
 
 	"github.com/ShimmerGlass/shimdns/lib/dns"
 	"github.com/ShimmerGlass/shimdns/lib/exp"
+	"github.com/samber/lo"
 )
 
 const Type = "rewrite"
@@ -17,16 +18,7 @@ type Rewrite struct {
 	cfg Config
 	id  string
 
-	rtype      *exp.Prog[string]
-	name       *exp.Prog[string]
-	address    *exp.Prog[netip.Addr]
-	ptr        *exp.Prog[string]
-	target     *exp.Prog[string]
-	priority   *exp.Prog[int]
-	weight     *exp.Prog[int]
-	port       *exp.Prog[int]
-	preference *exp.Prog[int]
-	mx         *exp.Prog[string]
+	set map[string]*exp.Prog[any]
 }
 
 func New(log *slog.Logger, cfg Config, id string) (*Rewrite, error) {
@@ -34,77 +26,13 @@ func New(log *slog.Logger, cfg Config, id string) (*Rewrite, error) {
 		log: log,
 		cfg: cfg,
 		id:  id,
+
+		set: map[string]*exp.Prog[any]{},
 	}
 
-	var err error
-	if cfg.Set.Type != "" {
-		r.rtype, err = exp.Compile[string](cfg.Set.Type)
-		if err != nil {
-			return nil, fmt.Errorf("type: %w", err)
-		}
-	}
-
-	if cfg.Set.Name != "" {
-		r.name, err = exp.Compile[string](cfg.Set.Name)
-		if err != nil {
-			return nil, fmt.Errorf("name: %w", err)
-		}
-	}
-
-	if cfg.Set.Address != "" {
-		r.address, err = exp.Compile[netip.Addr](cfg.Set.Address)
-		if err != nil {
-			return nil, fmt.Errorf("address: %w", err)
-		}
-	}
-
-	if cfg.Set.Ptr != "" {
-		r.ptr, err = exp.Compile[string](cfg.Set.Ptr)
-		if err != nil {
-			return nil, fmt.Errorf("ptr: %w", err)
-		}
-	}
-
-	if cfg.Set.Target != "" {
-		r.target, err = exp.Compile[string](cfg.Set.Target)
-		if err != nil {
-			return nil, fmt.Errorf("target: %w", err)
-		}
-	}
-
-	if cfg.Set.Priority != "" {
-		r.priority, err = exp.Compile[int](cfg.Set.Priority)
-		if err != nil {
-			return nil, fmt.Errorf("priority: %w", err)
-		}
-	}
-
-	if cfg.Set.Weight != "" {
-		r.weight, err = exp.Compile[int](cfg.Set.Weight)
-		if err != nil {
-			return nil, fmt.Errorf("weight: %w", err)
-		}
-	}
-
-	if cfg.Set.Port != "" {
-		r.port, err = exp.Compile[int](cfg.Set.Port)
-		if err != nil {
-			return nil, fmt.Errorf("port: %w", err)
-		}
-	}
-
-	if cfg.Set.Preference != "" {
-		r.preference, err = exp.Compile[int](cfg.Set.Preference)
-		if err != nil {
-			return nil, fmt.Errorf("preference: %w", err)
-		}
-	}
-
-	if cfg.Set.Mx != "" {
-		r.mx, err = exp.Compile[string](cfg.Set.Mx)
-		if err != nil {
-			return nil, fmt.Errorf("mx: %w", err)
-		}
+	err := r.initExprs()
+	if err != nil {
+		return nil, err
 	}
 
 	return r, nil
@@ -112,6 +40,32 @@ func New(log *slog.Logger, cfg Config, id string) (*Rewrite, error) {
 
 func (r *Rewrite) ID() string {
 	return r.id
+}
+
+func (r *Rewrite) initExprs() error {
+	fieldMap := map[string]string{}
+
+	rt := reflect.TypeOf(dns.Record{})
+	for i := range rt.NumField() {
+		field := rt.Field(i)
+		fieldMap[field.Tag.Get("expr")] = field.Name
+	}
+
+	for k, v := range r.cfg.Set {
+		fieldName, ok := fieldMap[k]
+		if !ok {
+			return fmt.Errorf("invalid set field %q, accepted fields are %v", k, lo.Keys(fieldMap))
+		}
+
+		expr, err := exp.CompileAny(v)
+		if err != nil {
+			return fmt.Errorf("set.%s: %w", k, err)
+		}
+
+		r.set[fieldName] = expr
+	}
+
+	return nil
 }
 
 func (r *Rewrite) Modify(ctx context.Context, records []dns.Record) ([]dns.Record, error) {
@@ -124,88 +78,39 @@ func (r *Rewrite) Modify(ctx context.Context, records []dns.Record) ([]dns.Recor
 			continue
 		}
 
-		if r.rtype != nil {
-			v, err := r.rtype.Run(rec)
-			if err != nil {
-				return nil, fmt.Errorf("type: %w", err)
-			}
-			rec.Type = dns.Type(v)
-		}
-
-		if r.name != nil {
-			v, err := r.name.Run(rec)
-			if err != nil {
-				return nil, fmt.Errorf("name: %w", err)
-			}
-			rec.Name = dns.NormName(v)
-		}
-
-		if r.address != nil {
-			v, err := r.address.Run(rec)
-			if err != nil {
-				return nil, fmt.Errorf("address: %w", err)
-			}
-			rec.Address = v
-		}
-
-		if r.ptr != nil {
-			v, err := r.ptr.Run(rec)
-			if err != nil {
-				return nil, fmt.Errorf("ptr: %w", err)
-			}
-			rec.Ptr = v
-		}
-
-		if r.target != nil {
-			v, err := r.target.Run(rec)
-			if err != nil {
-				return nil, fmt.Errorf("target: %w", err)
-			}
-			rec.Target = v
-		}
-
-		if r.priority != nil {
-			v, err := r.priority.Run(rec)
-			if err != nil {
-				return nil, fmt.Errorf("priority: %w", err)
-			}
-			rec.Priority = uint16(v)
-		}
-
-		if r.weight != nil {
-			v, err := r.weight.Run(rec)
-			if err != nil {
-				return nil, fmt.Errorf("weight: %w", err)
-			}
-			rec.Weight = uint16(v)
-		}
-
-		if r.port != nil {
-			v, err := r.port.Run(rec)
-			if err != nil {
-				return nil, fmt.Errorf("port: %w", err)
-			}
-			rec.Port = uint16(v)
-		}
-
-		if r.preference != nil {
-			v, err := r.preference.Run(rec)
-			if err != nil {
-				return nil, fmt.Errorf("preference: %w", err)
-			}
-			rec.Preference = uint16(v)
-		}
-
-		if r.mx != nil {
-			v, err := r.mx.Run(rec)
-			if err != nil {
-				return nil, fmt.Errorf("mx: %w", err)
-			}
-			rec.Mx = v
+		rec, err := r.modifyRecord(ctx, rec)
+		if err != nil {
+			return nil, err
 		}
 
 		records[i] = rec
 	}
 
 	return records, nil
+}
+
+func (r *Rewrite) modifyRecord(ctx context.Context, rec dns.Record) (dns.Record, error) {
+	recVal := reflect.ValueOf(&rec)
+
+	for field, expr := range r.set {
+		v, err := expr.Run(rec)
+		if err != nil {
+			return rec, fmt.Errorf("%s: %w", field, err)
+		}
+
+		field := recVal.Elem().FieldByName(field)
+		switch field.Kind() {
+		case reflect.Slice:
+			nv := reflect.New(field.Type()).Elem()
+			for _, el := range v.([]any) {
+				nv = reflect.Append(nv, reflect.ValueOf(el))
+			}
+			field.Set(nv)
+
+		default:
+			field.Set(reflect.ValueOf(v))
+		}
+	}
+
+	return rec, nil
 }

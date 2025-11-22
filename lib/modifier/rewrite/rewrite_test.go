@@ -26,9 +26,9 @@ var testCases = []testCase{
 			Address: netip.MustParseAddr("127.0.0.1"),
 		},
 		Cfg: Config{
-			Set: SetConfig{
-				Name:    `record.name + "baz."`,
-				Address: `ip("192.168.1.1")`,
+			Set: map[string]string{
+				"name":    `record.name + "baz."`,
+				"address": `ip("192.168.1.1")`,
 			},
 		},
 		Out: dns.Record{
@@ -36,6 +36,25 @@ var testCases = []testCase{
 			Source:  "src",
 			Name:    "foo.bar.baz.",
 			Address: netip.MustParseAddr("192.168.1.1"),
+		},
+	},
+	{
+		In: dns.Record{
+			Type:   dns.HTTPS,
+			Source: "src",
+			Name:   "foo.bar.",
+			Alpn:   []string{dns.AlpnHTTP2},
+		},
+		Cfg: Config{
+			Set: map[string]string{
+				"alpn": `["h2", "h3"]`,
+			},
+		},
+		Out: dns.Record{
+			Type:   dns.HTTPS,
+			Source: "src",
+			Name:   "foo.bar.",
+			Alpn:   []string{dns.AlpnHTTP2, dns.AlpnHTTP3},
 		},
 	},
 }
