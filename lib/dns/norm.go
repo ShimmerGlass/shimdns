@@ -7,5 +7,7 @@ func NormName(name string) string {
 		name += "."
 	}
 
+	name = strings.TrimPrefix(name, ".")
+
 	return name
 }
