@@ -9,6 +9,8 @@ import (
 	"github.com/samber/lo"
 )
 
+const Type = "mikrotik"
+
 type Mikrotik struct {
 	cfg Config
 	log *slog.Logger

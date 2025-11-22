@@ -9,16 +9,10 @@ import (
 	"github.com/ShimmerGlass/shimdns/lib/sink"
 	"github.com/ShimmerGlass/shimdns/lib/sink/dashboard"
 	"github.com/ShimmerGlass/shimdns/lib/sink/dnsserver"
+	"github.com/ShimmerGlass/shimdns/lib/sink/gandi"
 	httpsink "github.com/ShimmerGlass/shimdns/lib/sink/http"
 	"github.com/ShimmerGlass/shimdns/lib/sink/mikrotik"
 	"gopkg.in/yaml.v3"
-)
-
-const (
-	sinkDashboard = "dashboard"
-	sinkMikrotik  = "mikrotik"
-	sinkDNSServer = "dnsserver"
-	sinkHTTP      = "http"
 )
 
 type SinkConfig struct {
@@ -38,7 +32,7 @@ func (s *SinkConfig) UnmarshalYAML(node *yaml.Node) error {
 	s.Name = cfg.Name
 
 	switch cfg.Type {
-	case sinkDashboard:
+	case dashboard.Type:
 		rcfg := dashboard.Config{}
 		err = node.Decode(&rcfg)
 		if err != nil {
@@ -46,7 +40,7 @@ func (s *SinkConfig) UnmarshalYAML(node *yaml.Node) error {
 		}
 		s.Cfg = rcfg
 
-	case sinkMikrotik:
+	case mikrotik.Type:
 		rcfg := mikrotik.Config{}
 		err = node.Decode(&rcfg)
 		if err != nil {
@@ -54,7 +48,7 @@ func (s *SinkConfig) UnmarshalYAML(node *yaml.Node) error {
 		}
 		s.Cfg = rcfg
 
-	case sinkDNSServer:
+	case dnsserver.Type:
 		rcfg := dnsserver.Config{}
 		err = node.Decode(&rcfg)
 		if err != nil {
@@ -62,7 +56,7 @@ func (s *SinkConfig) UnmarshalYAML(node *yaml.Node) error {
 		}
 		s.Cfg = rcfg
 
-	case sinkHTTP:
+	case httpsink.Type:
 		rcfg := httpsink.Config{}
 		err = node.Decode(&rcfg)
 		if err != nil {

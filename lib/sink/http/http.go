@@ -11,6 +11,8 @@ import (
 	"github.com/ShimmerGlass/shimdns/lib/dns"
 )
 
+const Type = "http"
+
 type HTTP struct {
 	log *slog.Logger
 	cfg Config

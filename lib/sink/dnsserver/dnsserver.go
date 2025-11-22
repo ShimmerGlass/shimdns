@@ -14,6 +14,8 @@ import (
 	"github.com/samber/lo"
 )
 
+const Type = "dnsserver"
+
 type DNSServer struct {
 	log *slog.Logger
 	cfg Config

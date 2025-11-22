@@ -11,6 +11,8 @@ import (
 	"github.com/ShimmerGlass/shimdns/lib/dns"
 )
 
+const Type = "dashboard"
+
 type Dashboard struct {
 	log *slog.Logger
 	cfg Config
@@ -43,7 +45,7 @@ func (d *Dashboard) Write(ctx context.Context, recs []dns.Record) error {
 
 	slices.SortFunc(d.records, func(a, b dns.Record) int {
 		if a.Name == b.Name {
-			return strings.Compare(string(a.Type), string(b.Type))
+			return strings.Compare(a.Type, b.Type)
 		}
 
 		return strings.Compare(a.Name, b.Name)
