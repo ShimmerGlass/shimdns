@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"reflect"
 	"sync"
 	"time"
 
@@ -12,7 +13,6 @@ import (
 	"github.com/ShimmerGlass/shimdns/lib/modifier"
 	"github.com/ShimmerGlass/shimdns/lib/sink"
 	"github.com/ShimmerGlass/shimdns/lib/source"
-	"github.com/samber/lo"
 )
 
 type Prov struct {
@@ -67,10 +67,11 @@ func (p *Prov) runOnce(ctx context.Context) error {
 		}
 	}
 
-	old := lo.Map(p.prev, func(r dns.Record, _ int) string { return r.String() })
-	new := lo.Map(recs, func(r dns.Record, _ int) string { return r.String() })
+	removed, added := diff(p.prev, recs)
+	if len(removed) == 0 && len(added) == 0 {
+		return nil
+	}
 
-	removed, added := lo.Difference(old, new)
 	for _, rec := range removed {
 		p.log.Info("removed", "record", rec)
 	}
@@ -195,4 +196,36 @@ func (p *Prov) writeSinkRecs(ctx context.Context, snk sink.Sink, recs []dns.Reco
 	}
 
 	return err
+}
+
+func diff(old, new []dns.Record) (added, removed []dns.Record) {
+	for _, o := range old {
+		found := false
+		for _, n := range new {
+			found = reflect.DeepEqual(o, n)
+			if found {
+				break
+			}
+		}
+
+		if !found {
+			removed = append(removed, o)
+		}
+	}
+
+	for _, n := range new {
+		found := false
+		for _, o := range old {
+			found = reflect.DeepEqual(o, n)
+			if found {
+				break
+			}
+		}
+
+		if !found {
+			added = append(added, n)
+		}
+	}
+
+	return
 }
