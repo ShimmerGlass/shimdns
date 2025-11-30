@@ -20,9 +20,10 @@ type Prov struct {
 
 	interval time.Duration
 
-	sources   []source.Source
-	modifiers []modifier.Modifier
-	sinks     []sink.Sink
+	sources    []source.Source
+	modifiers  []modifier.Modifier
+	sinks      []sink.Sink
+	sinkStatus map[sink.Sink]bool // was the last write successful
 
 	prev []dns.Record
 }
@@ -33,11 +34,12 @@ func New(log *slog.Logger, interval time.Duration, sources []source.Source, modi
 	}
 
 	return &Prov{
-		log:       log,
-		interval:  interval,
-		sources:   sources,
-		modifiers: modifiers,
-		sinks:     sinks,
+		log:        log,
+		interval:   interval,
+		sources:    sources,
+		modifiers:  modifiers,
+		sinks:      sinks,
+		sinkStatus: map[sink.Sink]bool{},
 	}, nil
 }
 
@@ -67,25 +69,23 @@ func (p *Prov) runOnce(ctx context.Context) error {
 		}
 	}
 
-	removed, added := diff(p.prev, recs)
-	if len(removed) == 0 && len(added) == 0 {
-		return nil
-	}
+	added, removed := diff(p.prev, recs)
+	changed := len(removed) > 0 || len(added) > 0
 
 	for _, rec := range removed {
-		p.log.Info("removed", "record", rec)
+		p.log.Info("record removed", "record", rec)
 	}
 
 	for _, rec := range added {
-		p.log.Info("added", "record", rec)
-	}
-
-	err = p.writeRecs(ctx, recs)
-	if err != nil {
-		return err
+		p.log.Info("record added", "record", rec)
 	}
 
 	p.prev = recs
+
+	err = p.writeRecs(ctx, recs, changed)
+	if err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -156,26 +156,34 @@ func (p *Prov) applyModifier(ctx context.Context, mod modifier.Modifier, recs []
 	return recs, err
 }
 
-func (p *Prov) writeRecs(ctx context.Context, recs []dns.Record) error {
+func (p *Prov) writeRecs(ctx context.Context, recs []dns.Record, changed bool) error {
 	var lock sync.Mutex
 	var errs []error
 
 	var wg sync.WaitGroup
 
-	wg.Add(len(p.sinks))
+	lock.Lock()
 	for _, sink := range p.sinks {
+		if !changed && p.sinkStatus[sink] {
+			continue
+		}
+
+		wg.Add(1)
 		go func() {
+			p.log.Info("updating sink", "sink", sink.ID())
 			err := p.writeSinkRecs(ctx, sink, recs)
 
 			lock.Lock()
 			if err != nil {
 				errs = append(errs, err)
 			}
+			p.sinkStatus[sink] = err == nil
 			lock.Unlock()
 
 			wg.Done()
 		}()
 	}
+	lock.Unlock()
 	wg.Wait()
 
 	return errors.Join(errs...)
