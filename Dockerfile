@@ -5,7 +5,7 @@ WORKDIR /src
 COPY . .
 RUN go tool task build-ci
 
-FROM scratch
+FROM alpine
 COPY --from=build /out/shimdns /shimdns
 ENTRYPOINT ["/shimdns"]
 CMD  [ "-c", "/config/config.yaml" ]
