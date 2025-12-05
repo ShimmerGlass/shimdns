@@ -116,7 +116,7 @@ func (g *Gandi) buildDomain(domain string, recs []dns.Record) []*DomainRecord {
 			grec = &DomainRecord{
 				RrsetType: rec.Type,
 				RrsetName: dns.RelativeTo(rec.Name, domain),
-				RrsetTTL:  min(300, rec.TTL),
+				RrsetTTL:  max(300, rec.TTL),
 			}
 			grecs[k] = grec
 		}
@@ -143,7 +143,7 @@ func recRValue(r dns.Record) string {
 		}
 
 		if len(params) > 0 {
-			v += " (" + strings.Join(params, " ") + ")"
+			v += " " + strings.Join(params, " ")
 		}
 
 		return v

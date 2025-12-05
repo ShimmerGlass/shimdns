@@ -17,6 +17,6 @@ func TestRecordHTTPS(t *testing.T) {
 	}
 	rvalue := recRValue(rec)
 
-	require.Equal(t, `10 test.foo. (alpn="h2,h3")`, rvalue)
+	require.Equal(t, `10 test.foo. alpn="h2,h3"`, rvalue)
 
 }
