@@ -27,13 +27,22 @@ tasks:
     cmds:
       - go build -o {{ .BIN }} .
 
-  build-all:
+  build-ci:
     deps: [templ]
     sources:
       - "**/*.go"
       - "**/*.templ"
 
     cmds:
+      - GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -o /out/shimdns .
+
+  build-all:
+     deps: [templ]
+     sources:
+       - "**/*.go"
+       - "**/*.templ"
+
+     cmds:
       - for:
           matrix:
             OS: ['windows', 'linux', 'darwin']
