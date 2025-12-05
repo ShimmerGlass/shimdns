@@ -11,5 +11,6 @@ type Config struct {
 	URL     string        `yaml:"url"`
 	Token   string        `yaml:"token"`
 	Timeout time.Duration `yaml:"timeout"`
+	TTL     int           `yaml:"ttl"`
 	Filter  exp.Filter    `yaml:"filter"`
 }

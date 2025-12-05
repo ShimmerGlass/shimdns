@@ -95,6 +95,7 @@ func (n *Netbox) addrToRecord(addr netbox.IPAddress) (dns.Record, error) {
 
 	rec := dns.Record{
 		Name:    name,
+		TTL:     n.cfg.TTL,
 		Address: ip.Addr(),
 		Source:  n.id,
 	}

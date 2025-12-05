@@ -148,6 +148,12 @@ func (t *Traefik) readAddress(ctx context.Context) ([]dns.Record, error) {
 						Source:  t.id,
 					}
 
+					if addr.Is4() {
+						rec.Type = dns.A
+					} else {
+						rec.Type = dns.AAAA
+					}
+
 					res = append(res, rec)
 				}
 			}
