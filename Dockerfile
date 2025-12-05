@@ -1,12 +1,11 @@
-FROM golang:alpine AS build
+FROM --platform=$BUILDPLATFORM golang:alpine AS build
+ARG TARGETOS
+ARG TARGETARCH
+WORKDIR /src
+COPY . .
+RUN go tool task build-ci
 
-RUN mkdir /app
-COPY . /app
-WORKDIR /app
-RUN go tool task build
-
-FROM alpine AS run
-
-COPY --from=build /app/bin/shimdns /shimdns
-
-CMD [ "/shimdns", "-c", "/config/config.yaml" ]
+FROM scratch
+COPY --from=build /out/shimdns /shimdns
+ENTRYPOINT ["/shimdns"]
+CMD  [ "-c", "/config/config.yaml" ]
