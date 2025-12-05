@@ -11,8 +11,8 @@ import (
 func TestDiff(t *testing.T) {
 	a := dns.Record{Type: dns.A, Address: netip.MustParseAddr("10.1.2.3")}
 	b := dns.Record{Type: dns.A, Address: netip.MustParseAddr("10.1.2.4")}
-	c := dns.Record{Type: dns.HTTPS, Alpn: []string{dns.AlpnHTTP2}, IPv4Hint: []netip.Addr{netip.MustParseAddr("10.1.2.1")}}
-	d := dns.Record{Type: dns.HTTPS, Alpn: []string{dns.AlpnHTTP2, dns.AlpnHTTP3}, IPv4Hint: []netip.Addr{netip.MustParseAddr("10.1.2.1")}}
+	c := dns.Record{Type: dns.HTTPS, Alpn: []string{dns.AlpnHTTP2}}
+	d := dns.Record{Type: dns.HTTPS, Alpn: []string{dns.AlpnHTTP2, dns.AlpnHTTP3}}
 
 	added, removed := diff([]dns.Record{a, b, c, d}, []dns.Record{a, b, c, d})
 	require.Len(t, added, 0)

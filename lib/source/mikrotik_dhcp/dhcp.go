@@ -66,6 +66,7 @@ func (d *DHCP) Read(ctx context.Context) ([]dns.Record, error) {
 		rec := dns.Record{
 			Type:    dns.A,
 			Name:    dns.NormName(lease.Comment),
+			TTL:     d.cfg.TTL,
 			Address: addr,
 			Source:  d.id,
 		}

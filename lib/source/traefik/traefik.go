@@ -108,6 +108,7 @@ func (t *Traefik) readAddress(ctx context.Context) ([]dns.Record, error) {
 			httpsRec := dns.Record{
 				Type:     dns.HTTPS,
 				Target:   ".",
+				TTL:      t.cfg.TTL,
 				Priority: 1,
 				Name:     host,
 				Alpn:     []string{dns.AlpnHTTP11},
@@ -142,16 +143,9 @@ func (t *Traefik) readAddress(ctx context.Context) ([]dns.Record, error) {
 
 					rec := dns.Record{
 						Name:    host,
+						TTL:     t.cfg.TTL,
 						Address: addr,
 						Source:  t.id,
-					}
-
-					if addr.Is4() {
-						rec.Type = dns.A
-						httpsRec.IPv4Hint = append(httpsRec.IPv4Hint, addr)
-					} else {
-						rec.Type = dns.AAAA
-						httpsRec.IPv6Hint = append(httpsRec.IPv6Hint, addr)
 					}
 
 					res = append(res, rec)
@@ -192,6 +186,7 @@ func (t *Traefik) readCname(ctx context.Context) ([]dns.Record, error) {
 			res = append(res, dns.Record{
 				Type:   dns.CNAME,
 				Name:   dns.NormName(host),
+				TTL:    t.cfg.TTL,
 				Target: t.cfg.Target,
 				Source: t.id,
 			})

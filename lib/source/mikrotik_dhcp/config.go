@@ -14,5 +14,7 @@ type Config struct {
 	User     string `yaml:"user"`
 	Password string `yaml:"password"`
 
+	TTL int `yaml:"ttl"`
+
 	Filter exp.Filter `yaml:"filter"`
 }

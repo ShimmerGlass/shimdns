@@ -70,6 +70,7 @@ func (p *PTR) Modify(ctx context.Context, records []dns.Record) ([]dns.Record, e
 		records = append(records, dns.Record{
 			Type:   dns.PTR,
 			Name:   ptr,
+			TTL:    rec.TTL,
 			Ptr:    rec.Name,
 			Source: p.id,
 		})

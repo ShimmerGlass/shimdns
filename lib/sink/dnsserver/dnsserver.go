@@ -11,7 +11,6 @@ import (
 
 	"github.com/ShimmerGlass/shimdns/lib/dns"
 	dnssrv "github.com/miekg/dns"
-	"github.com/samber/lo"
 )
 
 const Type = "dnsserver"
@@ -103,9 +102,9 @@ func (d *DNSServer) answer(q dnssrv.Question, res *dnssrv.Msg) {
 	defer d.lock.RUnlock()
 
 	// CNAME handling
-	cnames := d.store.get(q.Name, dns.CNAME)
-	if (q.Qtype == dnssrv.TypeA || q.Qtype == dnssrv.TypeAAAA) && len(cnames) > 0 {
-		target := cnames[0].Target
+	cname, cnameOk := d.resolveCNAME(q.Name)
+	if (q.Qtype == dnssrv.TypeA || q.Qtype == dnssrv.TypeAAAA) && cnameOk {
+		target := cname.Target
 
 		res.Answer = append(res.Answer, &dnssrv.CNAME{
 			Hdr: dnssrv.RR_Header{
@@ -117,124 +116,43 @@ func (d *DNSServer) answer(q dnssrv.Question, res *dnssrv.Msg) {
 			Target: target,
 		})
 
-		d.answer(dnssrv.Question{
-			Name:   target,
-			Qtype:  q.Qtype,
-			Qclass: q.Qclass,
-		}, res)
+		res.Extra = appendSeq(res.Extra, d.resolveA(target))
+		res.Extra = appendSeq(res.Extra, d.resolveAAAA(target))
 
 		return
 	}
 
 	switch q.Qtype {
 	case dnssrv.TypeA:
-		for _, rec := range d.store.get(q.Name, dns.A) {
-			res.Answer = append(res.Answer, &dnssrv.A{
-				Hdr: dnssrv.RR_Header{
-					Name:   q.Name,
-					Rrtype: dnssrv.TypeA,
-					Class:  dnssrv.ClassINET,
-					Ttl:    30,
-				},
-				A: addrNetipToNetDotIP(rec.Address),
-			})
-		}
+		res.Answer = appendSeq(res.Answer, d.resolveA(q.Name))
 
 	case dnssrv.TypeAAAA:
-		for _, rec := range d.store.get(q.Name, dns.AAAA) {
-			res.Answer = append(res.Answer, &dnssrv.AAAA{
-				Hdr: dnssrv.RR_Header{
-					Name:   q.Name,
-					Rrtype: dnssrv.TypeAAAA,
-					Class:  dnssrv.ClassINET,
-					Ttl:    30,
-				},
-				AAAA: addrNetipToNetDotIP(rec.Address),
-			})
-		}
+		res.Answer = appendSeq(res.Answer, d.resolveAAAA(q.Name))
 
 	case dnssrv.TypePTR:
-		for _, rec := range d.store.get(q.Name, dns.PTR) {
-			res.Answer = append(res.Answer, &dnssrv.PTR{
-				Hdr: dnssrv.RR_Header{
-					Name:   q.Name,
-					Rrtype: dnssrv.TypePTR,
-					Class:  dnssrv.ClassINET,
-					Ttl:    30,
-				},
-				Ptr: rec.Ptr,
-			})
-		}
+		res.Answer = appendSeq(res.Answer, d.resolvePTR(q.Name))
 
 	case dnssrv.TypeSRV:
-		for _, rec := range d.store.get(q.Name, dns.SRV) {
-			res.Answer = append(res.Answer, &dnssrv.SRV{
-				Hdr: dnssrv.RR_Header{
-					Name:   q.Name,
-					Rrtype: dnssrv.TypeSRV,
-					Class:  dnssrv.ClassINET,
-					Ttl:    30,
-				},
-				Priority: rec.Priority,
-				Weight:   rec.Weight,
-				Port:     rec.Port,
-				Target:   rec.Target,
-			})
-		}
+		res.Answer = appendSeq(res.Answer, d.resolveSRV(q.Name))
 
 	case dnssrv.TypeMX:
-		for _, rec := range d.store.get(q.Name, dns.MX) {
-			res.Answer = append(res.Answer, &dnssrv.MX{
-				Hdr: dnssrv.RR_Header{
-					Name:   q.Name,
-					Rrtype: dnssrv.TypePTR,
-					Class:  dnssrv.ClassINET,
-					Ttl:    30,
-				},
-				Preference: rec.Preference,
-				Mx:         rec.Mx,
-			})
-		}
+		res.Answer = appendSeq(res.Answer, d.resolveMX(q.Name))
 
 	case dnssrv.TypeHTTPS:
-		for _, rec := range d.store.get(q.Name, dns.HTTPS) {
-			drec := &dnssrv.HTTPS{
-				SVCB: dnssrv.SVCB{
-					Hdr: dnssrv.RR_Header{
-						Name:   q.Name,
-						Rrtype: dnssrv.TypeHTTPS,
-						Class:  dnssrv.ClassINET,
-						Ttl:    30,
-					},
-					Priority: rec.Priority,
-					Target:   rec.Target,
-				},
-			}
-
-			if len(rec.Alpn) > 0 {
-				drec.Value = append(drec.Value, &dnssrv.SVCBAlpn{
-					Alpn: rec.Alpn,
-				})
-			}
-
-			if len(rec.IPv4Hint) > 0 {
-				drec.Value = append(drec.Value, &dnssrv.SVCBIPv4Hint{
-					Hint: lo.Map(rec.IPv4Hint, func(a netip.Addr, _ int) net.IP {
-						return addrNetipToNetDotIP(a)
-					}),
-				})
-			}
-
-			if len(rec.IPv6Hint) > 0 {
-				drec.Value = append(drec.Value, &dnssrv.SVCBIPv6Hint{
-					Hint: lo.Map(rec.IPv6Hint, func(a netip.Addr, _ int) net.IP {
-						return addrNetipToNetDotIP(a)
-					}),
-				})
-			}
-
-			res.Answer = append(res.Answer, drec)
+		https, ok := d.resolveHTTPS(q.Name)
+		if !ok {
+			return
 		}
+
+		res.Answer = append(res.Answer, https)
+
+		target := https.Target
+		if target == "." {
+			target = q.Name
+		}
+
+		res.Extra = appendSeq(res.Extra, d.resolveA(target))
+		res.Extra = appendSeq(res.Extra, d.resolveAAAA(target))
 	}
 }
 

@@ -26,10 +26,6 @@ type Gandi struct {
 }
 
 func New(log *slog.Logger, cfg Config, id string) (*Gandi, error) {
-	if cfg.TTL == 0 {
-		cfg.TTL = 3 * time.Hour
-	}
-
 	return &Gandi{
 		log: log,
 		id:  id,
@@ -120,7 +116,7 @@ func (g *Gandi) buildDomain(domain string, recs []dns.Record) []*DomainRecord {
 			grec = &DomainRecord{
 				RrsetType: rec.Type,
 				RrsetName: dns.RelativeTo(rec.Name, domain),
-				RrsetTTL:  int(g.cfg.TTL.Seconds()),
+				RrsetTTL:  min(300, rec.TTL),
 			}
 			grecs[k] = grec
 		}

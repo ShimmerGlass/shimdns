@@ -22,5 +22,7 @@ type Config struct {
 	Target    string       `yaml:"target"`
 	Addresses []netip.Addr `yaml:"addresses"`
 
+	TTL int `yaml:"ttl"`
+
 	Filter exp.Filter `yaml:"filter"`
 }

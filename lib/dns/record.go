@@ -5,8 +5,6 @@ import (
 	"log/slog"
 	"net/netip"
 	"strings"
-
-	"github.com/samber/lo"
 )
 
 const (
@@ -28,6 +26,7 @@ const (
 type Record struct {
 	Type string `json:"type" expr:"type" yaml:"type"`
 	Name string `json:"name" expr:"name" yaml:"name"`
+	TTL  int    `json:"ttl" expr:"ttl" yaml:"ttl"`
 
 	Source string `json:"source" expr:"source" yaml:"source"`
 
@@ -38,21 +37,19 @@ type Record struct {
 	// for CNAME, SRV, HTTPS
 	Target string `json:"target,omitempty" expr:"target" yaml:"target"`
 	// for SRV, HTTP
-	Priority uint16 `json:"priority,omitempty" expr:"priority" yaml:"priority"`
+	Priority int `json:"priority,omitempty" expr:"priority" yaml:"priority"`
 	// for SRV
-	Weight uint16 `json:"weight,omitempty" expr:"weight" yaml:"weight"`
-	Port   uint16 `json:"port,omitempty" expr:"port" yaml:"port"`
+	Weight int `json:"weight,omitempty" expr:"weight" yaml:"weight"`
+	Port   int `json:"port,omitempty" expr:"port" yaml:"port"`
 	// for MX
-	Preference uint16 `json:"preference,omitempty" expr:"preference" yaml:"preference"`
+	Preference int    `json:"preference,omitempty" expr:"preference" yaml:"preference"`
 	Mx         string `json:"mx,omitempty" expr:"mx" yaml:"mx"`
 	// for HTTPS
-	Alpn     []string     `json:"alpn,omitempty" expr:"alpn" yaml:"alpn"`
-	IPv4Hint []netip.Addr `json:"ipv4_hint,omitempty" expr:"ipv4_hint" yaml:"ipv4_hint"`
-	IPv6Hint []netip.Addr `json:"ipv6_hint,omitempty" expr:"ipv6_hint" yaml:"ipv6_hint"`
+	Alpn []string `json:"alpn,omitempty" expr:"alpn" yaml:"alpn"`
 }
 
 func (r Record) String() string {
-	return fmt.Sprintf("%s IN %s %s", r.Name, r.Type, r.RData())
+	return fmt.Sprintf("%s %d IN %s %s", r.Name, r.TTL, r.Type, r.RData())
 }
 
 func (r Record) RData() string {
@@ -77,16 +74,6 @@ func (r Record) RData() string {
 		if len(r.Alpn) > 0 {
 			v += fmt.Sprintf(" alpn=%s", strings.Join(r.Alpn, ","))
 		}
-		if len(r.IPv4Hint) > 0 {
-			v += fmt.Sprintf(" ipv4hint=%s", strings.Join(lo.Map(r.IPv4Hint, func(a netip.Addr, _ int) string {
-				return a.String()
-			}), ","))
-		}
-		if len(r.IPv6Hint) > 0 {
-			v += fmt.Sprintf(" ipv6hint=%s", strings.Join(lo.Map(r.IPv6Hint, func(a netip.Addr, _ int) string {
-				return a.String()
-			}), ","))
-		}
 		return v
 
 	default:
@@ -98,6 +85,7 @@ func (r Record) LogValue() slog.Value {
 	attrs := []slog.Attr{
 		slog.String("name", r.Name),
 		slog.String("type", r.Type),
+		slog.Int("ttl", int(r.TTL)),
 		slog.String("source", r.Source),
 	}
 
@@ -130,8 +118,6 @@ func (r Record) LogValue() slog.Value {
 			slog.String("target", r.Target),
 			slog.Int("priority", int(r.Priority)),
 			slog.Any("alpn", r.Alpn),
-			slog.Any("ipv4_hint", r.IPv4Hint),
-			slog.Any("ipv6_hint", r.IPv6Hint),
 		)
 
 	default:

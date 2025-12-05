@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strconv"
 
 	"github.com/ShimmerGlass/shimdns/lib/dns"
 	"github.com/samber/lo"
@@ -20,12 +21,6 @@ type Mikrotik struct {
 }
 
 func New(log *slog.Logger, cfg Config, id string) (*Mikrotik, error) {
-	if cfg.TTL == "" {
-		cfg.TTL = defaultTTL
-	}
-
-	// TODO: validate config
-
 	return &Mikrotik{
 		cfg: cfg,
 		log: log,
@@ -150,7 +145,7 @@ func (m *Mikrotik) recordToEntry(rec dns.Record) (entry, bool, error) {
 			Name:     rec.Name,
 			Address:  rec.Address.String(),
 			Comment:  m.cfg.Comment,
-			TTL:      m.cfg.TTL,
+			TTL:      strconv.Itoa(int(rec.TTL)),
 			Disabled: "false",
 		}, true, nil
 
@@ -165,10 +160,6 @@ func (m *Mikrotik) recordToEntry(rec dns.Record) (entry, bool, error) {
 
 func (m *Mikrotik) entryMatchesRecord(e entry, rec dns.Record) (bool, error) {
 	if e.Comment != m.cfg.Comment {
-		return false, nil
-	}
-
-	if e.TTL != m.cfg.TTL {
 		return false, nil
 	}
 
