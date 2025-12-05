@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"net/netip"
 	"net/url"
 	"strings"
 	"time"
@@ -145,16 +144,6 @@ func recRValue(r dns.Record) string {
 		params := []string{}
 		if len(r.Alpn) > 0 {
 			params = append(params, fmt.Sprintf(`alpn="%s"`, strings.Join(r.Alpn, ",")))
-		}
-		if len(r.IPv4Hint) > 0 {
-			params = append(params, fmt.Sprintf(`ipv4hint="%s"`, strings.Join(lo.Map(r.IPv4Hint, func(a netip.Addr, _ int) string {
-				return a.String()
-			}), ",")))
-		}
-		if len(r.IPv6Hint) > 0 {
-			params = append(params, fmt.Sprintf(`ipv6hint="%s"`, strings.Join(lo.Map(r.IPv6Hint, func(a netip.Addr, _ int) string {
-				return a.String()
-			}), ",")))
 		}
 
 		if len(params) > 0 {
