@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -46,6 +47,10 @@ func (h *HTTP) Read(ctx context.Context) ([]dns.Record, error) {
 
 	recs := res.Records[:0]
 	for _, rec := range res.Records {
+		if !dns.ValidType(rec.Type) {
+			return nil, fmt.Errorf("record %s: unsupported type %q", rec.Name, rec.Type)
+		}
+
 		ok, err := h.cfg.Filter.Match(rec)
 		if err != nil {
 			return nil, err

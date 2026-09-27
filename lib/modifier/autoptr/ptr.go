@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/netip"
+	"slices"
 	"strings"
 
 	"github.com/ShimmerGlass/shimdns/lib/dns"
@@ -45,6 +46,9 @@ func (p *PTR) Modify(ctx context.Context, records []dns.Record) ([]dns.Record, e
 		present[addr] = struct{}{}
 	}
 
+	// When several records share an address, the PTR points to the smallest
+	// name so that the result does not depend on the order of the records.
+	candidates := map[netip.Addr]dns.Record{}
 	for _, rec := range records {
 		ok, err := p.cfg.Filter.Match(rec)
 		if err != nil {
@@ -62,23 +66,34 @@ func (p *PTR) Modify(ctx context.Context, records []dns.Record) ([]dns.Record, e
 			continue
 		}
 
+		if cur, ok := candidates[rec.Address]; ok && cur.Name <= rec.Name {
+			continue
+		}
+
+		candidates[rec.Address] = rec
+	}
+
+	ptrs := make([]dns.Record, 0, len(candidates))
+	for _, rec := range candidates {
 		ptr, err := addrToPTR(rec.Address)
 		if err != nil {
 			return nil, fmt.Errorf("addr to ptr: %s: %w", rec.Address, err)
 		}
 
-		records = append(records, dns.Record{
+		ptrs = append(ptrs, dns.Record{
 			Type:   dns.PTR,
 			Name:   ptr,
 			TTL:    rec.TTL,
 			Ptr:    rec.Name,
 			Source: p.id,
 		})
-
-		present[rec.Address] = struct{}{}
 	}
 
-	return records, nil
+	slices.SortFunc(ptrs, func(a, b dns.Record) int {
+		return strings.Compare(a.Name, b.Name)
+	})
+
+	return append(records, ptrs...), nil
 }
 
 func addrToPTR(addr netip.Addr) (string, error) {

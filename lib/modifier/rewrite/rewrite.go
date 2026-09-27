@@ -89,8 +89,11 @@ func (r *Rewrite) Modify(ctx context.Context, records []dns.Record) ([]dns.Recor
 	return records, nil
 }
 
+// modifyRecord evaluates all the set expressions against the original record
+// before assigning any field, so that the result does not depend on the order
+// in which fields are set.
 func (r *Rewrite) modifyRecord(ctx context.Context, rec dns.Record) (dns.Record, error) {
-	recVal := reflect.ValueOf(&rec)
+	values := make(map[string]any, len(r.set))
 
 	for field, expr := range r.set {
 		v, err := expr.Run(rec)
@@ -98,19 +101,45 @@ func (r *Rewrite) modifyRecord(ctx context.Context, rec dns.Record) (dns.Record,
 			return rec, fmt.Errorf("%s: %w", field, err)
 		}
 
-		field := recVal.Elem().FieldByName(field)
-		switch field.Kind() {
-		case reflect.Slice:
-			nv := reflect.New(field.Type()).Elem()
-			for _, el := range v.([]any) {
-				nv = reflect.Append(nv, reflect.ValueOf(el))
-			}
-			field.Set(nv)
+		values[field] = v
+	}
 
-		default:
-			field.Set(reflect.ValueOf(v))
+	recVal := reflect.ValueOf(&rec).Elem()
+
+	for field, v := range values {
+		nv, err := convertValue(v, recVal.FieldByName(field).Type())
+		if err != nil {
+			return rec, fmt.Errorf("%s: %w", field, err)
 		}
+
+		recVal.FieldByName(field).Set(nv)
 	}
 
 	return rec, nil
+}
+
+func convertValue(v any, t reflect.Type) (reflect.Value, error) {
+	if v == nil {
+		return reflect.Value{}, fmt.Errorf("cannot assign nil to %s", t)
+	}
+
+	rv := reflect.ValueOf(v)
+	if rv.Type().AssignableTo(t) {
+		return rv, nil
+	}
+
+	if t.Kind() == reflect.Slice && rv.Kind() == reflect.Slice {
+		nv := reflect.MakeSlice(t, 0, rv.Len())
+		for i := range rv.Len() {
+			el, err := convertValue(rv.Index(i).Interface(), t.Elem())
+			if err != nil {
+				return reflect.Value{}, fmt.Errorf("element %d: %w", i, err)
+			}
+			nv = reflect.Append(nv, el)
+		}
+
+		return nv, nil
+	}
+
+	return reflect.Value{}, fmt.Errorf("cannot assign %T to %s", v, t)
 }

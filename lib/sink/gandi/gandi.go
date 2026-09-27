@@ -47,7 +47,7 @@ func (g *Gandi) Write(ctx context.Context, recs []dns.Record) error {
 	}
 
 	for _, domain := range g.cfg.Domains {
-		err := g.updateDomain(domain, recs)
+		err := g.updateDomain(ctx, domain, recs)
 		if err != nil {
 			return err
 		}
@@ -56,7 +56,7 @@ func (g *Gandi) Write(ctx context.Context, recs []dns.Record) error {
 	return nil
 }
 
-func (g *Gandi) updateDomain(domain string, recs []dns.Record) error {
+func (g *Gandi) updateDomain(ctx context.Context, domain string, recs []dns.Record) error {
 	wanted := g.buildDomain(domain, recs)
 	body := &bytes.Buffer{}
 	err := json.NewEncoder(body).Encode(Records{Items: wanted})
@@ -64,7 +64,8 @@ func (g *Gandi) updateDomain(domain string, recs []dns.Record) error {
 		return err
 	}
 
-	req, err := http.NewRequest(
+	req, err := http.NewRequestWithContext(
+		ctx,
 		http.MethodPut,
 		lo.Must(url.JoinPath("https://api.gandi.net/v5/livedns/domains", domain, "records")),
 		body,
@@ -80,6 +81,7 @@ func (g *Gandi) updateDomain(domain string, recs []dns.Record) error {
 	if err != nil {
 		return err
 	}
+	defer func() { _ = res.Body.Close() }()
 
 	if res.StatusCode >= 400 {
 		return fmt.Errorf("update records: invalid status code %d", res.StatusCode)
@@ -115,7 +117,7 @@ func (g *Gandi) buildDomain(domain string, recs []dns.Record) []*DomainRecord {
 		if !ok {
 			grec = &DomainRecord{
 				RrsetType: rec.Type,
-				RrsetName: dns.RelativeTo(rec.Name, domain),
+				RrsetName: name,
 				RrsetTTL:  max(300, rec.TTL),
 			}
 			grecs[k] = grec

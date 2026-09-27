@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/netip"
 	"regexp"
+	"slices"
 	"time"
 
 	"github.com/ShimmerGlass/shimdns/lib/dns"
@@ -117,15 +118,15 @@ func (t *Traefik) readAddress(ctx context.Context) ([]dns.Record, error) {
 
 			seenAddrs := map[netip.Addr]bool{}
 			for _, ep := range router.EntryPoints {
+				if !t.entrypointAllowed(ep) {
+					continue
+				}
+
 				if epHTTP2[ep] {
 					httpsRec.Alpn = append(httpsRec.Alpn, dns.AlpnHTTP2)
 				}
 				if epHTTP3[ep] {
 					httpsRec.Alpn = append(httpsRec.Alpn, dns.AlpnHTTP3)
-				}
-
-				if _, ok := t.allowedEntrypoints[ep]; len(t.allowedEntrypoints) > 0 && !ok {
-					continue
 				}
 
 				addrs := t.cfg.Addresses
@@ -158,7 +159,8 @@ func (t *Traefik) readAddress(ctx context.Context) ([]dns.Record, error) {
 				}
 			}
 
-			if router.TLS.CertResolver != "" {
+			// only advertise HTTPS for hosts that resolve through this source
+			if router.TLS.CertResolver != "" && len(seenAddrs) > 0 {
 				httpsRec.Alpn = lo.Uniq(httpsRec.Alpn)
 				res = append(res, httpsRec)
 			}
@@ -177,14 +179,7 @@ func (t *Traefik) readCname(ctx context.Context) ([]dns.Record, error) {
 	res := []dns.Record{}
 
 	for _, router := range routers {
-		epOK := false
-		for _, ep := range router.EntryPoints {
-			if t.allowedEntrypoints[ep] {
-				epOK = true
-				break
-			}
-		}
-		if !epOK {
+		if !slices.ContainsFunc(router.EntryPoints, t.entrypointAllowed) {
 			continue
 		}
 
@@ -200,6 +195,12 @@ func (t *Traefik) readCname(ctx context.Context) ([]dns.Record, error) {
 	}
 
 	return res, nil
+}
+
+// entrypointAllowed reports whether routers on the entrypoint should produce
+// records. All entrypoints are allowed when none are configured.
+func (t *Traefik) entrypointAllowed(ep string) bool {
+	return len(t.allowedEntrypoints) == 0 || t.allowedEntrypoints[ep]
 }
 
 func (t *Traefik) entrypoints(ctx context.Context) ([]entrypoint, error) {

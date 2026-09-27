@@ -15,6 +15,9 @@ import (
 
 const Type = "dnsserver"
 
+// maxCNAMEChain bounds CNAME resolution to avoid looping on cycles
+const maxCNAMEChain = 8
+
 type DNSServer struct {
 	log *slog.Logger
 	cfg Config
@@ -101,45 +104,48 @@ func (d *DNSServer) answer(q dnssrv.Question, res *dnssrv.Msg) {
 	d.lock.RLock()
 	defer d.lock.RUnlock()
 
-	// CNAME handling
-	cname, cnameOk := d.resolveCNAME(q.Name)
-	if (q.Qtype == dnssrv.TypeA || q.Qtype == dnssrv.TypeAAAA) && cnameOk {
-		target := cname.Target
+	name := q.Name
 
-		res.Answer = append(res.Answer, &dnssrv.CNAME{
-			Hdr: dnssrv.RR_Header{
-				Name:   q.Name,
-				Rrtype: dnssrv.TypeCNAME,
-				Class:  dnssrv.ClassINET,
-				Ttl:    30,
-			},
-			Target: target,
-		})
-
-		res.Extra = appendSeq(res.Extra, d.resolveA(target))
-		res.Extra = appendSeq(res.Extra, d.resolveAAAA(target))
-
+	if !d.store.has(name) {
+		res.Rcode = dnssrv.RcodeNameError
 		return
+	}
+
+	// follow CNAME chains within the store, the other records are then
+	// looked up on the final target
+	for range maxCNAMEChain {
+		cname, ok := d.resolveCNAME(name)
+		if !ok {
+			break
+		}
+
+		res.Answer = append(res.Answer, cname)
+
+		if q.Qtype == dnssrv.TypeCNAME {
+			return
+		}
+
+		name = cname.Target
 	}
 
 	switch q.Qtype {
 	case dnssrv.TypeA:
-		res.Answer = appendSeq(res.Answer, d.resolveA(q.Name))
+		res.Answer = appendSeq(res.Answer, d.resolveA(name))
 
 	case dnssrv.TypeAAAA:
-		res.Answer = appendSeq(res.Answer, d.resolveAAAA(q.Name))
+		res.Answer = appendSeq(res.Answer, d.resolveAAAA(name))
 
 	case dnssrv.TypePTR:
-		res.Answer = appendSeq(res.Answer, d.resolvePTR(q.Name))
+		res.Answer = appendSeq(res.Answer, d.resolvePTR(name))
 
 	case dnssrv.TypeSRV:
-		res.Answer = appendSeq(res.Answer, d.resolveSRV(q.Name))
+		res.Answer = appendSeq(res.Answer, d.resolveSRV(name))
 
 	case dnssrv.TypeMX:
-		res.Answer = appendSeq(res.Answer, d.resolveMX(q.Name))
+		res.Answer = appendSeq(res.Answer, d.resolveMX(name))
 
 	case dnssrv.TypeHTTPS:
-		https, ok := d.resolveHTTPS(q.Name)
+		https, ok := d.resolveHTTPS(name)
 		if !ok {
 			return
 		}
@@ -148,7 +154,7 @@ func (d *DNSServer) answer(q dnssrv.Question, res *dnssrv.Msg) {
 
 		target := https.Target
 		if target == "." {
-			target = q.Name
+			target = name
 		}
 
 		res.Extra = appendSeq(res.Extra, d.resolveA(target))

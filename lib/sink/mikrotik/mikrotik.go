@@ -54,28 +54,19 @@ func (m *Mikrotik) write(ctx context.Context, records []dns.Record) error {
 		})
 	}
 
+	records, err = m.supportedRecords(records)
+	if err != nil {
+		return err
+	}
+
 	toAdd := []dns.Record{}
 	toRemove := []entry{}
 
 	for _, rec := range records {
-		ok, err := m.cfg.Filter.Match(rec)
-		if err != nil {
-			return err
-		}
-
-		if !ok {
-			continue
-		}
-
 		found := false
 
 		for _, e := range current {
-			match, err := m.entryMatchesRecord(e, rec)
-			if err != nil {
-				return err
-			}
-
-			if match {
+			if m.entryMatchesRecord(e, rec) {
 				found = true
 				break
 			}
@@ -90,12 +81,7 @@ func (m *Mikrotik) write(ctx context.Context, records []dns.Record) error {
 		found := false
 
 		for _, rec := range records {
-			match, err := m.entryMatchesRecord(e, rec)
-			if err != nil {
-				return err
-			}
-
-			if match {
+			if m.entryMatchesRecord(e, rec) {
 				found = true
 				break
 			}
@@ -116,13 +102,7 @@ func (m *Mikrotik) write(ctx context.Context, records []dns.Record) error {
 	}
 
 	for _, rec := range toAdd {
-		e, ok, err := m.recordToEntry(rec)
-		if err != nil {
-			return err
-		}
-		if !ok {
-			continue
-		}
+		e := m.recordToEntry(rec)
 
 		m.log.Info("adding entry", "entry", e)
 
@@ -135,43 +115,50 @@ func (m *Mikrotik) write(ctx context.Context, records []dns.Record) error {
 	return nil
 }
 
-func (m *Mikrotik) recordToEntry(rec dns.Record) (entry, bool, error) {
+// supportedRecords returns the records accepted by the filter that can be
+// represented as mikrotik static dns entries.
+func (m *Mikrotik) supportedRecords(records []dns.Record) ([]dns.Record, error) {
+	res := []dns.Record{}
+
+	for _, rec := range records {
+		ok, err := m.cfg.Filter.Match(rec)
+		if err != nil {
+			return nil, err
+		}
+
+		if !ok {
+			continue
+		}
+
+		switch rec.Type {
+		case dns.A, dns.AAAA:
+			res = append(res, rec)
+
+		default:
+			m.log.Debug("record type not supported", "record", rec)
+		}
+	}
+
+	return res, nil
+}
+
+func (m *Mikrotik) recordToEntry(rec dns.Record) entry {
 	// TODO: strip end dot
 
-	switch rec.Type {
-	case dns.A, dns.AAAA:
-		return entry{
-			Type:     rec.Type,
-			Name:     rec.Name,
-			Address:  rec.Address.String(),
-			Comment:  m.cfg.Comment,
-			TTL:      strconv.Itoa(int(rec.TTL)),
-			Disabled: "false",
-		}, true, nil
-
-	case dns.PTR:
-		// mikrotik static dns entries do not support PTR records
-		return entry{}, false, nil
-
-	default:
-		return entry{}, false, fmt.Errorf("record type %T not handled", rec)
+	return entry{
+		Type:     rec.Type,
+		Name:     rec.Name,
+		Address:  rec.Address.String(),
+		Comment:  m.cfg.Comment,
+		TTL:      strconv.Itoa(int(rec.TTL)),
+		Disabled: "false",
 	}
 }
 
-func (m *Mikrotik) entryMatchesRecord(e entry, rec dns.Record) (bool, error) {
+func (m *Mikrotik) entryMatchesRecord(e entry, rec dns.Record) bool {
 	if e.Comment != m.cfg.Comment {
-		return false, nil
+		return false
 	}
 
-	switch rec.Type {
-
-	case dns.A, dns.AAAA:
-		return e.Name+"." == rec.Name && e.Address == rec.Address.String(), nil
-
-	case dns.PTR:
-		return false, nil
-
-	default:
-		return false, fmt.Errorf("record type %T not handled", rec)
-	}
+	return e.Name+"." == rec.Name && e.Address == rec.Address.String()
 }

@@ -97,6 +97,9 @@ func loadSinks(log *slog.Logger, cfg Config, httpMux *http.ServeMux) ([]sink.Sin
 		switch sinkCfg := anySinkCfg.Cfg.(type) {
 
 		case dashboard.Config:
+			if httpMux == nil {
+				return nil, fmt.Errorf("%s: http_listen_addr must be set", id)
+			}
 			snk, err = dashboard.New(sinkLog, sinkCfg, id, httpMux)
 
 		case mikrotik.Config:
@@ -106,6 +109,9 @@ func loadSinks(log *slog.Logger, cfg Config, httpMux *http.ServeMux) ([]sink.Sin
 			snk, err = dnsserver.New(sinkLog, sinkCfg, id)
 
 		case httpsink.Config:
+			if httpMux == nil {
+				return nil, fmt.Errorf("%s: http_listen_addr must be set", id)
+			}
 			snk, err = httpsink.New(sinkLog, sinkCfg, id, httpMux)
 
 		case gandi.Config:

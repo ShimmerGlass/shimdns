@@ -39,8 +39,7 @@ func (h *HTTP) ID() string {
 }
 
 func (h *HTTP) Write(ctx context.Context, recs []dns.Record) error {
-	h.lock.Lock()
-	h.records = []dns.Record{}
+	res := []dns.Record{}
 
 	for _, rec := range recs {
 		ok, err := h.cfg.Filter.Match(rec)
@@ -49,10 +48,12 @@ func (h *HTTP) Write(ctx context.Context, recs []dns.Record) error {
 		}
 
 		if ok {
-			h.records = append(h.records, rec)
+			res = append(res, rec)
 		}
 	}
 
+	h.lock.Lock()
+	h.records = res
 	h.lock.Unlock()
 
 	return nil

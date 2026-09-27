@@ -2,11 +2,11 @@ package file
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 
 	"github.com/ShimmerGlass/shimdns/lib/dns"
-	"github.com/samber/lo"
 	"gopkg.in/yaml.v3"
 )
 
@@ -43,13 +43,15 @@ func (f *File) Read(ctx context.Context) ([]dns.Record, error) {
 		return nil, err
 	}
 
-	recs := lo.Map(d.Records, func(rec dns.Record, _ int) dns.Record {
-		if rec.Source == "" {
-			rec.Source = f.id
+	for i, rec := range d.Records {
+		if !dns.ValidType(rec.Type) {
+			return nil, fmt.Errorf("record %d (%s): unsupported type %q", i, rec.Name, rec.Type)
 		}
 
-		return rec
-	})
+		if rec.Source == "" {
+			d.Records[i].Source = f.id
+		}
+	}
 
-	return recs, nil
+	return d.Records, nil
 }

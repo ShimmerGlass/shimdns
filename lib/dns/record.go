@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/netip"
+	"slices"
 	"strings"
 )
 
@@ -16,6 +17,13 @@ const (
 	MX    = "MX"
 	HTTPS = "HTTPS"
 )
+
+// Types lists the supported record types
+var Types = []string{A, AAAA, PTR, CNAME, SRV, MX, HTTPS}
+
+func ValidType(t string) bool {
+	return slices.Contains(Types, t)
+}
 
 const (
 	AlpnHTTP11 = "http/1.1"
@@ -77,7 +85,7 @@ func (r Record) RData() string {
 		return v
 
 	default:
-		panic(fmt.Sprintf("record type %q not handled", r.Type))
+		return ""
 	}
 }
 
@@ -119,9 +127,6 @@ func (r Record) LogValue() slog.Value {
 			slog.Int("priority", int(r.Priority)),
 			slog.Any("alpn", r.Alpn),
 		)
-
-	default:
-		panic(fmt.Sprintf("record type %q not handled", r.Type))
 	}
 
 	return slog.GroupValue(attrs...)

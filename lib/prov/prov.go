@@ -25,6 +25,8 @@ type Prov struct {
 	sinks      []sink.Sink
 	sinkStatus map[sink.Sink]bool // was the last write successful
 
+	sourceRecs map[source.Source][]dns.Record // last successful read of each source
+
 	prev []dns.Record
 }
 
@@ -40,6 +42,7 @@ func New(log *slog.Logger, interval time.Duration, sources []source.Source, modi
 		modifiers:  modifiers,
 		sinks:      sinks,
 		sinkStatus: map[sink.Sink]bool{},
+		sourceRecs: map[source.Source][]dns.Record{},
 	}, nil
 }
 
@@ -90,6 +93,10 @@ func (p *Prov) runOnce(ctx context.Context) error {
 	return nil
 }
 
+// readRecs reads records from all sources. When a source fails, the records
+// from its last successful read are used instead. An error is returned only
+// if a source failed and never had a successful read, in which case the
+// update must be skipped to avoid removing its records from the sinks.
 func (p *Prov) readRecs(ctx context.Context) ([]dns.Record, error) {
 	var lock sync.Mutex
 	var recs []dns.Record
@@ -104,8 +111,15 @@ func (p *Prov) readRecs(ctx context.Context) ([]dns.Record, error) {
 
 			lock.Lock()
 			if err != nil {
-				errs = append(errs, err)
+				last, ok := p.sourceRecs[source]
+				if ok {
+					p.log.Error("source read failed, using last known records", "err", err, "records", len(last))
+					recs = append(recs, last...)
+				} else {
+					errs = append(errs, err)
+				}
 			} else {
+				p.sourceRecs[source] = r
 				recs = append(recs, r...)
 			}
 			lock.Unlock()
