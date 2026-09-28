@@ -11,8 +11,12 @@ import (
 )
 
 type Request struct {
-	URL  string
-	Path string
+	URL   string
+	Path  string
+	Query url.Values
+
+	// ResponseHeader, if set, receives the response headers
+	ResponseHeader *http.Header
 
 	ExpectEmptyResponse bool
 
@@ -56,6 +60,9 @@ func reqInternal[T any](ctx context.Context, method string, r Request, body any)
 	if err != nil {
 		return data, err
 	}
+	if len(r.Query) > 0 {
+		url += "?" + r.Query.Encode()
+	}
 
 	req, err := http.NewRequestWithContext(ctx, method, url, buf)
 	if err != nil {
@@ -71,6 +78,10 @@ func reqInternal[T any](ctx context.Context, method string, r Request, body any)
 		return data, err
 	}
 	defer func() { _ = res.Body.Close() }()
+
+	if r.ResponseHeader != nil {
+		*r.ResponseHeader = res.Header
+	}
 
 	if res.StatusCode >= 400 {
 		body, err := io.ReadAll(res.Body)

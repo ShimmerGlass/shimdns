@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -41,6 +42,26 @@ func TestGetURLWithPath(t *testing.T) {
 
 	_, err := Get[[]item](context.Background(), Request{URL: srv.URL + "/prefix/", Path: "/api/items"})
 	require.NoError(t, err)
+}
+
+func TestQueryAndResponseHeader(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/api/items", r.URL.Path)
+		require.Equal(t, "2", r.URL.Query().Get("page"))
+		w.Header().Set("X-Next-Page", "3")
+		_ = json.NewEncoder(w).Encode([]item{})
+	}))
+	defer srv.Close()
+
+	var hdr http.Header
+	_, err := Get[[]item](context.Background(), Request{
+		URL:            srv.URL,
+		Path:           "/api/items",
+		Query:          url.Values{"page": {"2"}},
+		ResponseHeader: &hdr,
+	})
+	require.NoError(t, err)
+	require.Equal(t, "3", hdr.Get("X-Next-Page"))
 }
 
 func TestBasicAuth(t *testing.T) {

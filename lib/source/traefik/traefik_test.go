@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"net/netip"
 	"slices"
+	"strconv"
 	"testing"
 
 	"github.com/ShimmerGlass/shimdns/lib/dns"
@@ -327,4 +328,61 @@ func TestModelsDecode(t *testing.T) {
 	require.Nil(t, eps[0].HTTP3)
 	require.NotNil(t, eps[1].HTTP2)
 	require.NotNil(t, eps[1].HTTP3)
+}
+
+// traefik pages its API lists (100 items by default): X-Next-Page is the next
+// page, 1 on the last one.
+func TestReadAddressPaginated(t *testing.T) {
+	var routers []json.RawMessage
+	require.NoError(t, json.Unmarshal([]byte(routersJSON), &routers))
+	pages := [][]json.RawMessage{routers[:2], routers[2:4], routers[4:]}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/entrypoints":
+			w.Header().Set("X-Next-Page", "1")
+			_, _ = w.Write([]byte(entrypointsJSON))
+		case "/api/http/routers":
+			page := 1
+			if p := r.URL.Query().Get("page"); p != "" {
+				page = int(p[0] - '0')
+			}
+			next := page + 1
+			if next > len(pages) {
+				next = 1
+			}
+			w.Header().Set("X-Next-Page", string(rune('0'+next)))
+			_ = json.NewEncoder(w).Encode(pages[page-1])
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	paged, err := New(slog.Default(), Config{URL: srv.URL, TTL: 60}, "traefik.test")
+	require.NoError(t, err)
+	recs, err := paged.Read(context.Background())
+	require.NoError(t, err)
+
+	single, err := New(slog.Default(), Config{URL: serve(t).URL, TTL: 60}, "traefik.test")
+	require.NoError(t, err)
+	want, err := single.Read(context.Background())
+	require.NoError(t, err)
+
+	sortRecs(recs)
+	sortRecs(want)
+	require.Equal(t, want, recs)
+}
+
+func TestReadPaginationLoop(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// always announces a further page
+		page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+		w.Header().Set("X-Next-Page", strconv.Itoa(page+1))
+		_, _ = w.Write([]byte(`[]`))
+	}))
+	t.Cleanup(srv.Close)
+
+	_, err := getAll[router](context.Background(), srv.URL, "/api/http/routers")
+	require.Error(t, err)
 }

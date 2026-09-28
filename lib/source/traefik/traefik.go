@@ -5,9 +5,12 @@ import (
 	"fmt"
 	"iter"
 	"log/slog"
+	"net/http"
 	"net/netip"
+	"net/url"
 	"regexp"
 	"slices"
+	"strconv"
 	"time"
 
 	"github.com/ShimmerGlass/shimdns/lib/dns"
@@ -204,17 +207,45 @@ func (t *Traefik) entrypointAllowed(ep string) bool {
 }
 
 func (t *Traefik) entrypoints(ctx context.Context) ([]entrypoint, error) {
-	return rest.Get[[]entrypoint](ctx, rest.Request{
-		URL:  t.cfg.URL,
-		Path: "/api/entrypoints",
-	})
+	return getAll[entrypoint](ctx, t.cfg.URL, "/api/entrypoints")
 }
 
 func (t *Traefik) routers(ctx context.Context) ([]router, error) {
-	return rest.Get[[]router](ctx, rest.Request{
-		URL:  t.cfg.URL,
-		Path: "/api/http/routers",
-	})
+	return getAll[router](ctx, t.cfg.URL, "/api/http/routers")
+}
+
+// maxPages bounds getAll in case the API keeps announcing a next page.
+const maxPages = 100
+
+// getAll reads every page of a traefik API list: traefik returns 100 items
+// per page by default and sets X-Next-Page to the next page number, or to 1
+// on the last page.
+func getAll[T any](ctx context.Context, baseURL, path string) ([]T, error) {
+	var all []T
+
+	page := 1
+	for range maxPages {
+		var hdr http.Header
+		items, err := rest.Get[[]T](ctx, rest.Request{
+			URL:            baseURL,
+			Path:           path,
+			Query:          url.Values{"page": {strconv.Itoa(page)}},
+			ResponseHeader: &hdr,
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		all = append(all, items...)
+
+		next, err := strconv.Atoi(hdr.Get("X-Next-Page"))
+		if err != nil || next <= page {
+			return all, nil
+		}
+		page = next
+	}
+
+	return nil, fmt.Errorf("traefik: %s: more than %d pages", path, maxPages)
 }
 
 var hostReg = regexp.MustCompile("Host\\(['\"`]([^'\"`]+)['\"`]\\)")
