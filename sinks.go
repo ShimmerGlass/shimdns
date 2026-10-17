@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/ShimmerGlass/shimdns/lib/sink"
 	"github.com/ShimmerGlass/shimdns/lib/sink/dashboard"
@@ -15,10 +16,20 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// DefaultRemovalGrace is how long the gandi sink keeps a record that
+// disappeared from the sources. Public resolvers cache the empty answer
+// for the zone's SOA minimum (3h at Gandi), so a record that vanishes for
+// a few seconds while a container is recreated must not be removed.
+const DefaultRemovalGrace = 5 * time.Minute
+
 type SinkConfig struct {
 	Type string
 	Name string
 	Cfg  any
+
+	// RemovalGrace is how long a record that disappeared from the sources
+	// is kept in the sink. Zero removes it at once.
+	RemovalGrace time.Duration
 }
 
 func (s *SinkConfig) UnmarshalYAML(node *yaml.Node) error {
@@ -30,6 +41,24 @@ func (s *SinkConfig) UnmarshalYAML(node *yaml.Node) error {
 
 	s.Type = cfg.Type
 	s.Name = cfg.Name
+
+	// Only gandi defaults to a grace: the others serve or display the
+	// records locally, where a dead one does more harm than a missing one.
+	grace := struct {
+		RemovalGrace *time.Duration `yaml:"removal_grace"`
+	}{}
+	err = node.Decode(&grace)
+	if err != nil {
+		return err
+	}
+	switch {
+	case grace.RemovalGrace != nil && *grace.RemovalGrace < 0:
+		return fmt.Errorf("sink %q: invalid removal_grace %s", cfg.Type, *grace.RemovalGrace)
+	case grace.RemovalGrace != nil:
+		s.RemovalGrace = *grace.RemovalGrace
+	case cfg.Type == gandi.Type:
+		s.RemovalGrace = DefaultRemovalGrace
+	}
 
 	switch cfg.Type {
 	case dashboard.Type:
@@ -124,7 +153,7 @@ func loadSinks(log *slog.Logger, cfg Config, httpMux *http.ServeMux) ([]sink.Sin
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", id, err)
 		}
-		sinks = append(sinks, snk)
+		sinks = append(sinks, sink.WithRemovalGrace(snk, anySinkCfg.RemovalGrace))
 	}
 
 	return sinks, nil

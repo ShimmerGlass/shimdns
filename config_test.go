@@ -130,6 +130,26 @@ func TestLoadConfig(t *testing.T) {
 	gcfg := cfg.Sinks[4].Cfg.(gandi.Config)
 	require.Equal(t, []string{"example.com"}, gcfg.Domains)
 	require.Equal(t, "tok", gcfg.PersonalAccessToken)
+
+	// the grace defaults to 5m on gandi only
+	require.Equal(t, time.Duration(0), cfg.Sinks[2].RemovalGrace)
+	require.Equal(t, DefaultRemovalGrace, cfg.Sinks[4].RemovalGrace)
+}
+
+func TestRemovalGraceConfig(t *testing.T) {
+	cfg, err := loadConfig(writeConfig(t, `
+sinks:
+  - type: dnsserver
+    removal_grace: 10s
+  - type: gandi
+    removal_grace: 0s
+`))
+	require.NoError(t, err)
+	require.Equal(t, 10*time.Second, cfg.Sinks[0].RemovalGrace)
+	require.Equal(t, time.Duration(0), cfg.Sinks[1].RemovalGrace)
+
+	_, err = loadConfig(writeConfig(t, "sinks: [{type: dnsserver, removal_grace: -1s}]"))
+	require.Error(t, err)
 }
 
 func TestLoadConfigErrors(t *testing.T) {

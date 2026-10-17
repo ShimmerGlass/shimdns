@@ -7,6 +7,7 @@ import (
 	"net/netip"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/ShimmerGlass/shimdns/lib/dns"
 	"github.com/ShimmerGlass/shimdns/lib/modifier"
@@ -235,4 +236,156 @@ func TestSourceNeverLoaded(t *testing.T) {
 
 	require.NoError(t, p.runOnce(context.Background()))
 	require.ElementsMatch(t, []dns.Record{rec("a.", "10.0.0.1"), rec("b.", "10.0.0.2")}, snk.last())
+}
+
+type clock struct{ t time.Time }
+
+func (c *clock) now() time.Time { return c.t }
+
+func (c *clock) advance(d time.Duration) { c.t = c.t.Add(d) }
+
+func graceProv(t *testing.T, grace time.Duration, sources []source.Source, snk sink.Sink) (*Prov, *clock) {
+	t.Helper()
+
+	p := newTestProv(t, sources, nil, []sink.Sink{sink.WithRemovalGrace(snk, grace)})
+	c := &clock{t: time.Unix(1000, 0)}
+	p.now = c.now
+
+	return p, c
+}
+
+func TestGraceRecordBack(t *testing.T) {
+	src := &fakeSource{id: "src", recs: []dns.Record{rec("a.", "10.0.0.1"), rec("b.", "10.0.0.2")}}
+	snk := &fakeSink{id: "snk"}
+	p, c := graceProv(t, time.Minute, []source.Source{src}, snk)
+	ctx := context.Background()
+
+	require.NoError(t, p.runOnce(ctx))
+	require.Len(t, snk.writes, 1)
+
+	// a. disappears: still published, and the sink is not written
+	src.recs = []dns.Record{rec("b.", "10.0.0.2")}
+	c.advance(10 * time.Second)
+	require.NoError(t, p.runOnce(ctx))
+	require.Len(t, snk.writes, 1)
+
+	// and comes back within the grace period
+	c.advance(10 * time.Second)
+	src.recs = []dns.Record{rec("a.", "10.0.0.1"), rec("b.", "10.0.0.2")}
+	require.NoError(t, p.runOnce(ctx))
+
+	// the grace period restarts from the next disappearance, not the first
+	src.recs = []dns.Record{rec("b.", "10.0.0.2")}
+	c.advance(50 * time.Second)
+	require.NoError(t, p.runOnce(ctx))
+	c.advance(50 * time.Second)
+	require.NoError(t, p.runOnce(ctx))
+
+	require.Len(t, snk.writes, 1)
+}
+
+func TestGraceExpires(t *testing.T) {
+	src := &fakeSource{id: "src", recs: []dns.Record{rec("a.", "10.0.0.1"), rec("b.", "10.0.0.2")}}
+	snk := &fakeSink{id: "snk"}
+	p, c := graceProv(t, time.Minute, []source.Source{src}, snk)
+	ctx := context.Background()
+
+	require.NoError(t, p.runOnce(ctx))
+
+	src.recs = []dns.Record{rec("b.", "10.0.0.2")}
+	c.advance(5 * time.Second)
+	require.NoError(t, p.runOnce(ctx))
+	c.advance(59 * time.Second)
+	require.NoError(t, p.runOnce(ctx))
+	require.Len(t, snk.writes, 1)
+
+	c.advance(time.Second)
+	require.NoError(t, p.runOnce(ctx))
+	require.Len(t, snk.writes, 2)
+	require.Equal(t, []dns.Record{rec("b.", "10.0.0.2")}, snk.last())
+	require.Len(t, p.tracked, 1)
+
+	// gone for good: no further write
+	c.advance(time.Hour)
+	require.NoError(t, p.runOnce(ctx))
+	require.Len(t, snk.writes, 2)
+}
+
+func TestGraceAddressChange(t *testing.T) {
+	src := &fakeSource{id: "src", recs: []dns.Record{rec("a.", "10.0.0.1")}}
+	snk := &fakeSink{id: "snk"}
+	p, c := graceProv(t, time.Hour, []source.Source{src}, snk)
+	ctx := context.Background()
+
+	require.NoError(t, p.runOnce(ctx))
+
+	// the new address replaces the old one at once, without an empty zone:
+	// a single write holds the new record
+	src.recs = []dns.Record{rec("a.", "10.0.0.9")}
+	c.advance(time.Second)
+	require.NoError(t, p.runOnce(ctx))
+	require.Len(t, snk.writes, 2)
+	require.Equal(t, []dns.Record{rec("a.", "10.0.0.9")}, snk.last())
+
+	// the old one does not come back when the new one goes away
+	src.recs = nil
+	c.advance(time.Second)
+	require.NoError(t, p.runOnce(ctx))
+	require.Equal(t, []dns.Record{rec("a.", "10.0.0.9")}, snk.last())
+}
+
+func TestGraceFailingSource(t *testing.T) {
+	src := &fakeSource{id: "src", recs: []dns.Record{rec("a.", "10.0.0.1")}}
+	snk := &fakeSink{id: "snk"}
+	p, c := graceProv(t, time.Minute, []source.Source{src}, snk)
+	ctx := context.Background()
+
+	require.NoError(t, p.runOnce(ctx))
+
+	// while the source fails its last records are current, whatever the time
+	src.err = errors.New("down")
+	c.advance(time.Hour)
+	require.NoError(t, p.runOnce(ctx))
+	c.advance(time.Hour)
+	require.NoError(t, p.runOnce(ctx))
+	require.Len(t, snk.writes, 1)
+
+	// it recovers without the record: the grace period starts now
+	src.err = nil
+	src.recs = nil
+	require.NoError(t, p.runOnce(ctx))
+	c.advance(30 * time.Second)
+	require.NoError(t, p.runOnce(ctx))
+	require.Len(t, snk.writes, 1)
+
+	c.advance(30 * time.Second)
+	require.NoError(t, p.runOnce(ctx))
+	require.Len(t, snk.writes, 2)
+	require.Empty(t, snk.last())
+}
+
+func TestGracePerSink(t *testing.T) {
+	src := &fakeSource{id: "src", recs: []dns.Record{rec("a.", "10.0.0.1")}}
+	local := &fakeSink{id: "local"}
+	public := &fakeSink{id: "public"}
+
+	p := newTestProv(t, []source.Source{src}, nil,
+		[]sink.Sink{local, sink.WithRemovalGrace(public, time.Minute)})
+	c := &clock{t: time.Unix(1000, 0)}
+	p.now = c.now
+	ctx := context.Background()
+
+	require.NoError(t, p.runOnce(ctx))
+
+	src.recs = nil
+	c.advance(10 * time.Second)
+	require.NoError(t, p.runOnce(ctx))
+	require.Empty(t, local.last())
+	require.Len(t, local.writes, 2)
+	require.Len(t, public.writes, 1)
+
+	c.advance(time.Minute)
+	require.NoError(t, p.runOnce(ctx))
+	require.Len(t, public.writes, 2)
+	require.Empty(t, public.last())
 }

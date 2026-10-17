@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"reflect"
+	"slices"
 	"sync"
 	"time"
 
@@ -27,7 +28,19 @@ type Prov struct {
 
 	sourceRecs map[source.Source][]dns.Record // last successful read of each source
 
-	prev []dns.Record
+	now func() time.Time // injectable for tests
+
+	// tracked holds every record seen and not yet forgotten, including the
+	// ones that disappeared from the sources less than the longest removal
+	// grace ago.
+	tracked map[string]*trackedRec
+	// sinkPrev is what each sink was last given, to know when to write.
+	sinkPrev map[sink.Sink][]dns.Record
+}
+
+type trackedRec struct {
+	rec          dns.Record
+	missingSince time.Time // zero while the sources still return the record
 }
 
 func New(log *slog.Logger, interval time.Duration, sources []source.Source, modifiers []modifier.Modifier, sinks []sink.Sink) (*Prov, error) {
@@ -43,6 +56,9 @@ func New(log *slog.Logger, interval time.Duration, sources []source.Source, modi
 		sinks:      sinks,
 		sinkStatus: map[sink.Sink]bool{},
 		sourceRecs: map[source.Source][]dns.Record{},
+		now:        time.Now,
+		tracked:    map[string]*trackedRec{},
+		sinkPrev:   map[sink.Sink][]dns.Record{},
 	}, nil
 }
 
@@ -72,25 +88,111 @@ func (p *Prov) runOnce(ctx context.Context) error {
 		}
 	}
 
-	added, removed := diff(p.prev, recs)
-	changed := len(removed) > 0 || len(added) > 0
+	p.track(recs)
 
-	for _, rec := range removed {
-		p.log.Info("record removed", "record", rec)
-	}
-
-	for _, rec := range added {
-		p.log.Info("record added", "record", rec)
-	}
-
-	p.prev = recs
-
-	err = p.writeRecs(ctx, recs, changed)
+	err = p.writeRecs(ctx, recs)
 	if err != nil {
 		return err
 	}
 
 	return nil
+}
+
+// track updates the records seen with the ones just read, and logs what
+// was added or removed. A record that disappeared is only removed once it
+// has been absent for the longest removal grace of the sinks; until then
+// the sinks with a longer grace keep being given it (see sinkRecs). When
+// a record with the same name and type is present, the missing one is a
+// change of data, not a blip: it is removed at once.
+func (p *Prov) track(recs []dns.Record) {
+	now := p.now()
+
+	present := map[string]bool{}
+	live := map[string]bool{} // name and type with at least one record
+	for _, rec := range recs {
+		k := recKey(rec)
+		present[k] = true
+		live[nameType(rec)] = true
+
+		t, ok := p.tracked[k]
+		switch {
+		case !ok:
+			p.log.Info("record added", "record", rec)
+			p.tracked[k] = &trackedRec{rec: rec}
+		case !t.missingSince.IsZero():
+			p.log.Debug("record is back", "record", rec, "missing", now.Sub(t.missingSince))
+			t.missingSince = time.Time{}
+		}
+	}
+
+	maxGrace := p.maxGrace()
+	for k, t := range p.tracked {
+		if present[k] {
+			continue
+		}
+
+		if t.missingSince.IsZero() {
+			t.missingSince = now
+			if maxGrace > 0 && !live[nameType(t.rec)] {
+				p.log.Debug("record is missing, keeping it", "record", t.rec, "grace", maxGrace)
+			}
+		}
+
+		if live[nameType(t.rec)] || now.Sub(t.missingSince) >= maxGrace {
+			p.log.Info("record removed", "record", t.rec)
+			delete(p.tracked, k)
+		}
+	}
+}
+
+// sinkRecs returns the records to give to a sink: the current ones, plus
+// the missing ones that are still within the sink's removal grace.
+func (p *Prov) sinkRecs(snk sink.Sink, recs []dns.Record) []dns.Record {
+	grace := sinkGrace(snk)
+	if grace <= 0 {
+		return recs
+	}
+
+	now := p.now()
+	var kept []string
+	for k, t := range p.tracked {
+		if !t.missingSince.IsZero() && now.Sub(t.missingSince) < grace {
+			kept = append(kept, k)
+		}
+	}
+	if len(kept) == 0 {
+		return recs
+	}
+
+	slices.Sort(kept) // stable output
+	out := append([]dns.Record{}, recs...)
+	for _, k := range kept {
+		out = append(out, p.tracked[k].rec)
+	}
+	return out
+}
+
+func (p *Prov) maxGrace() time.Duration {
+	var max time.Duration
+	for _, snk := range p.sinks {
+		max = slices.Max([]time.Duration{max, sinkGrace(snk)})
+	}
+	return max
+}
+
+func sinkGrace(snk sink.Sink) time.Duration {
+	if g, ok := snk.(sink.RemovalGracer); ok {
+		return g.RemovalGrace()
+	}
+	return 0
+}
+
+func recKey(rec dns.Record) string {
+	return fmt.Sprintf("%+v", rec)
+}
+
+func nameType(rec dns.Record) string {
+	return rec.Type + " " + rec.Name
 }
 
 // readRecs reads records from all sources. When a source fails, the records
@@ -170,7 +272,7 @@ func (p *Prov) applyModifier(ctx context.Context, mod modifier.Modifier, recs []
 	return recs, err
 }
 
-func (p *Prov) writeRecs(ctx context.Context, recs []dns.Record, changed bool) error {
+func (p *Prov) writeRecs(ctx context.Context, recs []dns.Record) error {
 	var lock sync.Mutex
 	var errs []error
 
@@ -178,14 +280,18 @@ func (p *Prov) writeRecs(ctx context.Context, recs []dns.Record, changed bool) e
 
 	lock.Lock()
 	for _, sink := range p.sinks {
-		if !changed && p.sinkStatus[sink] {
+		sinkRecs := p.sinkRecs(sink, recs)
+
+		added, removed := diff(p.sinkPrev[sink], sinkRecs)
+		if len(added) == 0 && len(removed) == 0 && p.sinkStatus[sink] {
 			continue
 		}
+		p.sinkPrev[sink] = sinkRecs
 
 		wg.Add(1)
 		go func() {
 			p.log.Info("updating sink", "sink", sink.ID())
-			err := p.writeSinkRecs(ctx, sink, recs)
+			err := p.writeSinkRecs(ctx, sink, sinkRecs)
 
 			lock.Lock()
 			if err != nil {
