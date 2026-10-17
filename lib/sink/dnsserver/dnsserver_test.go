@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net"
 	"net/netip"
+	"strings"
 	"testing"
 
 	"github.com/ShimmerGlass/shimdns/lib/dns"
@@ -261,6 +262,37 @@ func TestUnknownName(t *testing.T) {
 		require.Equal(t, dnssrv.RcodeNameError, res.Rcode)
 		require.Empty(t, res.Answer)
 	}
+}
+
+func TestAliasIgnored(t *testing.T) {
+	with := newTestServer(t, Config{}, append([]dns.Record{
+		{Type: dns.ALIAS, Name: "alias.example.com.", TTL: 60, Target: "a.example.com."},
+		{Type: dns.ALIAS, Name: "x.nope.example.org.", TTL: 60, Target: "a.example.com."},
+	}, records...))
+	without := newTestServer(t, Config{}, records)
+
+	for _, name := range []string{"alias.example.com.", "x.nope.example.org.", "org.", "example.com.", "a.example.com."} {
+		for _, qtype := range []uint16{dnssrv.TypeA, dnssrv.TypeCNAME, dnssrv.TypeANY} {
+			w, wo := query(t, with, name, qtype), query(t, without, name, qtype)
+			require.Equal(t, wo.Rcode, w.Rcode, name)
+			require.Equal(t, len(wo.Answer), len(w.Answer), name)
+		}
+	}
+
+	require.Equal(t, dnssrv.RcodeNameError, query(t, with, "alias.example.com.", dnssrv.TypeA).Rcode)
+}
+
+func TestTXT(t *testing.T) {
+	long := strings.Repeat("x", 300)
+	d := newTestServer(t, Config{}, []dns.Record{
+		{Type: dns.TXT, Name: "example.com.", TTL: 60, Text: "v=spf1 ?all"},
+		{Type: dns.TXT, Name: "example.com.", TTL: 60, Text: long},
+	})
+
+	res := query(t, d, "example.com.", dnssrv.TypeTXT)
+	require.Len(t, res.Answer, 2)
+	require.Equal(t, []string{"v=spf1 ?all"}, res.Answer[0].(*dnssrv.TXT).Txt)
+	require.Equal(t, []string{long[:255], long[255:]}, res.Answer[1].(*dnssrv.TXT).Txt)
 }
 
 func TestNoData(t *testing.T) {

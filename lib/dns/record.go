@@ -16,10 +16,12 @@ const (
 	SRV   = "SRV"
 	MX    = "MX"
 	HTTPS = "HTTPS"
+	ALIAS = "ALIAS"
+	TXT   = "TXT"
 )
 
 // Types lists the supported record types
-var Types = []string{A, AAAA, PTR, CNAME, SRV, MX, HTTPS}
+var Types = []string{A, AAAA, PTR, CNAME, SRV, MX, HTTPS, ALIAS, TXT}
 
 func ValidType(t string) bool {
 	return slices.Contains(Types, t)
@@ -42,7 +44,7 @@ type Record struct {
 	Address netip.Addr `json:"address,omitempty" expr:"address" yaml:"address"`
 	// for PTR
 	Ptr string `json:"ptr,omitempty" expr:"ptr" yaml:"ptr"`
-	// for CNAME, SRV, HTTPS
+	// for CNAME, ALIAS, SRV, HTTPS
 	Target string `json:"target,omitempty" expr:"target" yaml:"target"`
 	// for SRV, HTTP
 	Priority int `json:"priority,omitempty" expr:"priority" yaml:"priority"`
@@ -54,6 +56,24 @@ type Record struct {
 	Mx         string `json:"mx,omitempty" expr:"mx" yaml:"mx"`
 	// for HTTPS
 	Alpn []string `json:"alpn,omitempty" expr:"alpn" yaml:"alpn"`
+	// for TXT
+	Text string `json:"text,omitempty" expr:"text" yaml:"text"`
+}
+
+// TxtChunks splits a TXT value into the character-strings of at most 255
+// bytes a record is made of.
+func TxtChunks(s string) []string {
+	if s == "" {
+		return []string{""}
+	}
+
+	var chunks []string
+	for len(s) > 255 {
+		chunks = append(chunks, s[:255])
+		s = s[255:]
+	}
+
+	return append(chunks, s)
 }
 
 func (r Record) String() string {
@@ -68,8 +88,11 @@ func (r Record) RData() string {
 	case PTR:
 		return r.Ptr
 
-	case CNAME:
+	case CNAME, ALIAS:
 		return r.Target
+
+	case TXT:
+		return r.Text
 
 	case SRV:
 		return fmt.Sprintf("%d %d %d %s", r.Priority, r.Weight, r.Port, r.Target)
@@ -104,8 +127,11 @@ func (r Record) LogValue() slog.Value {
 	case PTR:
 		attrs = append(attrs, slog.String("ptr", r.Ptr))
 
-	case CNAME:
+	case CNAME, ALIAS:
 		attrs = append(attrs, slog.String("target", r.Target))
+
+	case TXT:
+		attrs = append(attrs, slog.String("text", r.Text))
 
 	case SRV:
 		attrs = append(attrs,

@@ -36,6 +36,37 @@ func TestRecordRValue(t *testing.T) {
 	require.Equal(t, "10 mail.foo.", recRValue(dns.Record{Type: dns.MX, Preference: 10, Mx: "mail.foo."}))
 }
 
+func TestRecordRValueTXT(t *testing.T) {
+	require.Equal(t, `"v=spf1 include:_mailcust.gandi.net ?all"`, recRValue(dns.Record{Type: dns.TXT, Text: "v=spf1 include:_mailcust.gandi.net ?all"}))
+	require.Equal(t, `"a \"b\" c\\d"`, recRValue(dns.Record{Type: dns.TXT, Text: `a "b" c\d`}))
+
+	long := strings.Repeat("x", 255) + strings.Repeat("y", 10)
+	require.Equal(t, `"`+strings.Repeat("x", 255)+`" "`+strings.Repeat("y", 10)+`"`, recRValue(dns.Record{Type: dns.TXT, Text: long}))
+}
+
+func TestBuildDomainTXT(t *testing.T) {
+	g, err := New(slog.Default(), Config{}, "gandi.test")
+	require.NoError(t, err)
+
+	recs := sortedByName(g.buildDomain("example.com", []dns.Record{
+		{Type: dns.TXT, Name: "example.com.", TTL: 300, Text: "v=spf1 ?all"},
+		{Type: dns.TXT, Name: "example.com.", TTL: 300, Text: "other"},
+	}))
+	require.Equal(t, map[recKey]*DomainRecord{
+		{Name: "@", Type: dns.TXT}: {
+			RrsetType:   dns.TXT,
+			RrsetName:   "@",
+			RrsetTTL:    300,
+			RrsetValues: []string{`"v=spf1 ?all"`, `"other"`},
+		},
+	}, recs)
+}
+
+func TestRecordRValueAlias(t *testing.T) {
+	require.Equal(t, "site.scw.cloud.", recRValue(dns.Record{Type: dns.ALIAS, Target: "site.scw.cloud."}))
+	require.Equal(t, "site.scw.cloud.", recRValue(dns.Record{Type: dns.ALIAS, Target: "site.scw.cloud"}))
+}
+
 func sortedByName(recs []*DomainRecord) map[recKey]*DomainRecord {
 	res := map[recKey]*DomainRecord{}
 	for _, r := range recs {
@@ -79,6 +110,44 @@ func TestBuildDomain(t *testing.T) {
 			RrsetValues: []string{"a.example.com."},
 		},
 	}, recs)
+}
+
+func TestBuildDomainAlias(t *testing.T) {
+	g, err := New(slog.Default(), Config{}, "gandi.test")
+	require.NoError(t, err)
+
+	alias := func(name string) dns.Record {
+		return dns.Record{Type: dns.ALIAS, Name: name, TTL: 600, Target: "site.scw.cloud."}
+	}
+
+	// apex alias, subdomain alias dropped
+	recs := sortedByName(g.buildDomain("example.com", []dns.Record{alias("example.com."), alias("www.example.com.")}))
+	require.Equal(t, map[recKey]*DomainRecord{
+		{Name: "@", Type: dns.ALIAS}: {
+			RrsetType:   dns.ALIAS,
+			RrsetName:   "@",
+			RrsetTTL:    600,
+			RrsetValues: []string{"site.scw.cloud."},
+		},
+	}, recs)
+
+	// apex alias next to an apex A is dropped, the A stays, other names are untouched
+	recs = sortedByName(g.buildDomain("example.com", []dns.Record{
+		alias("example.com."),
+		{Type: dns.A, Name: "example.com.", TTL: 60, Address: netip.MustParseAddr("10.0.0.1")},
+		{Type: dns.A, Name: "a.example.com.", TTL: 60, Address: netip.MustParseAddr("10.0.0.2")},
+	}))
+	require.Len(t, recs, 2)
+	require.Contains(t, recs, recKey{Name: "@", Type: dns.A})
+	require.Contains(t, recs, recKey{Name: "a", Type: dns.A})
+
+	// same with a CNAME
+	recs = sortedByName(g.buildDomain("example.com", []dns.Record{
+		alias("example.com."),
+		{Type: dns.CNAME, Name: "example.com.", TTL: 60, Target: "x.example.org."},
+	}))
+	require.Len(t, recs, 1)
+	require.Contains(t, recs, recKey{Name: "@", Type: dns.CNAME})
 }
 
 type roundTripFunc func(*http.Request) (*http.Response, error)

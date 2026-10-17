@@ -161,6 +161,8 @@ func TestWriteUnsupportedTypes(t *testing.T) {
 		dns.Record{Type: dns.CNAME, Name: "c.example.com.", TTL: 60, Target: "a.example.com."},
 		dns.Record{Type: dns.SRV, Name: "_x._tcp.example.com.", TTL: 60, Target: "a.example.com."},
 		dns.Record{Type: dns.MX, Name: "example.com.", TTL: 60, Mx: "a.example.com."},
+		dns.Record{Type: dns.TXT, Name: "example.com.", TTL: 60, Text: "x"},
+		dns.Record{Type: dns.ALIAS, Name: "example.com.", TTL: 60, Target: "a.example.com."},
 	)
 
 	require.NoError(t, m.Write(context.Background(), recs))

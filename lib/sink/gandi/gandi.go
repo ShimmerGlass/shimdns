@@ -99,9 +99,29 @@ func (g *Gandi) buildDomain(domain string, recs []dns.Record) []*DomainRecord {
 	domain = dns.NormName(domain)
 	grecs := map[recKey]*DomainRecord{}
 
+	// names that have an address or a CNAME, an ALIAS can't share them
+	resolved := map[string]bool{}
+	for _, rec := range recs {
+		switch rec.Type {
+		case dns.A, dns.AAAA, dns.CNAME:
+			resolved[dns.NormName(rec.Name)] = true
+		}
+	}
+
 	for _, rec := range recs {
 		if !dns.SubdomainOf(rec.Name, domain) && rec.Name != domain {
 			continue
+		}
+
+		if rec.Type == dns.ALIAS {
+			switch {
+			case dns.NormName(rec.Name) != domain:
+				g.log.Warn("alias is only valid at the zone apex, dropping it", "domain", domain, "record", rec)
+				continue
+			case resolved[domain]:
+				g.log.Warn("alias conflicts with an A, AAAA or CNAME record at the same name, dropping it", "domain", domain, "record", rec)
+				continue
+			}
 		}
 
 		var name string
@@ -149,6 +169,19 @@ func recRValue(r dns.Record) string {
 		}
 
 		return v
+
+	case dns.TXT:
+		// one quoted string per 255 bytes, `\` and `"` escaped
+		var parts []string
+		for _, c := range dns.TxtChunks(r.Text) {
+			c = strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(c)
+			parts = append(parts, `"`+c+`"`)
+		}
+
+		return strings.Join(parts, " ")
+
+	case dns.ALIAS:
+		return dns.NormName(r.Target)
 
 	default:
 		return r.RData()

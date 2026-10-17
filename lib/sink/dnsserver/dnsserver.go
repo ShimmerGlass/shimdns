@@ -74,6 +74,11 @@ func (d *DNSServer) Write(ctx context.Context, records []dns.Record) error {
 			continue
 		}
 
+		// ALIAS is flattened by the provider that hosts the zone, it can't be served here
+		if rec.Type == dns.ALIAS {
+			continue
+		}
+
 		d.store.add(rec)
 	}
 
@@ -143,6 +148,9 @@ func (d *DNSServer) answer(q dnssrv.Question, res *dnssrv.Msg) {
 
 	case dnssrv.TypeMX:
 		res.Answer = appendSeq(res.Answer, d.resolveMX(name))
+
+	case dnssrv.TypeTXT:
+		res.Answer = appendSeq(res.Answer, d.resolveTXT(name))
 
 	case dnssrv.TypeHTTPS:
 		https, ok := d.resolveHTTPS(name)

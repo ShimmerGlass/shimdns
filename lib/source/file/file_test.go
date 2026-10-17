@@ -30,6 +30,14 @@ records:
     priority: 1
     target: .
     alpn: [h2, h3]
+  - type: TXT
+    name: example.com.
+    ttl: 300
+    text: v=spf1 include:_mailcust.gandi.net ?all
+  - type: ALIAS
+    name: example.com.
+    ttl: 300
+    target: site.scw.cloud.
 `), 0o600))
 
 	f, err := New(slog.Default(), Config{Path: path}, "file.test")
@@ -42,6 +50,8 @@ records:
 		{Type: dns.A, Name: "a.example.com.", TTL: 60, Address: netip.MustParseAddr("10.0.0.1"), Source: "file.test"},
 		{Type: dns.CNAME, Name: "b.example.com.", TTL: 60, Target: "a.example.com.", Source: "custom"},
 		{Type: dns.HTTPS, Name: "a.example.com.", Priority: 1, Target: ".", Alpn: []string{"h2", "h3"}, Source: "file.test"},
+		{Type: dns.TXT, Name: "example.com.", TTL: 300, Text: "v=spf1 include:_mailcust.gandi.net ?all", Source: "file.test"},
+		{Type: dns.ALIAS, Name: "example.com.", TTL: 300, Target: "site.scw.cloud.", Source: "file.test"},
 	}, recs)
 }
 
@@ -66,11 +76,11 @@ func TestReadInvalidFile(t *testing.T) {
 
 func TestReadUnsupportedType(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "records.yaml")
-	require.NoError(t, os.WriteFile(path, []byte(`records: [{type: TXT, name: a.example.com.}]`), 0o600))
+	require.NoError(t, os.WriteFile(path, []byte(`records: [{type: NS, name: a.example.com.}]`), 0o600))
 
 	f, err := New(slog.Default(), Config{Path: path}, "file.test")
 	require.NoError(t, err)
 
 	_, err = f.Read(context.Background())
-	require.ErrorContains(t, err, "TXT")
+	require.ErrorContains(t, err, "NS")
 }

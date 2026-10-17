@@ -3,6 +3,7 @@ package dns
 import (
 	"log/slog"
 	"net/netip"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -111,17 +112,23 @@ func TestRecordLogValue(t *testing.T) {
 }
 
 func TestValidType(t *testing.T) {
-	for _, typ := range []string{A, AAAA, PTR, CNAME, SRV, MX, HTTPS} {
+	for _, typ := range []string{A, AAAA, PTR, CNAME, SRV, MX, HTTPS, ALIAS, TXT} {
 		require.True(t, ValidType(typ), typ)
 	}
 
-	require.False(t, ValidType("TXT"))
+	require.False(t, ValidType("NS"))
 	require.False(t, ValidType(""))
 	require.False(t, ValidType("a"))
 }
 
+func TestTxtChunks(t *testing.T) {
+	require.Equal(t, []string{""}, TxtChunks(""))
+	require.Equal(t, []string{"abc"}, TxtChunks("abc"))
+	require.Equal(t, []string{strings.Repeat("a", 255), "b"}, TxtChunks(strings.Repeat("a", 255)+"b"))
+}
+
 func TestUnknownTypeDoesNotPanic(t *testing.T) {
-	r := Record{Type: "TXT", Name: "a.", TTL: 60, Source: "src"}
+	r := Record{Type: "NS", Name: "a.", TTL: 60, Source: "src"}
 
 	require.NotPanics(t, func() {
 		_ = r.String()

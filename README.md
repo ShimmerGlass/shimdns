@@ -24,6 +24,35 @@ ShimDNS runs a a daemon on a configured interval and dynamically updates DNS rec
 - Auto PTR generation
 - Rewrite
 
+## TXT records
+
+`TXT` carries free text in `text`. The `gandi` sink quotes it and splits it into strings of 255 bytes,
+and the integrated DNS server answers it. Several `TXT` records at one name are published together.
+
+```yaml
+records:
+  - name: example.com.
+    type: TXT
+    text: v=spf1 include:_mailcust.gandi.net ?all
+```
+
+## ALIAS records
+
+`ALIAS` points a name at another hostname where a `CNAME` is not allowed, such as a zone apex. It
+uses `target`, like a `CNAME`:
+
+```yaml
+records:
+  - name: example.com.
+    type: ALIAS
+    target: site.functions.fnc.fr-par.scw.cloud.
+```
+
+- Gandi only: the `gandi` sink publishes it as a LiveDNS `ALIAS` rrset. Every other sink ignores it
+  (the integrated DNS server does not answer it).
+- Apex only: the `gandi` sink drops, with a warning, an `ALIAS` whose name is not the domain itself,
+  or that shares its name with an `A`, `AAAA` or `CNAME` record.
+
 ## Removal grace
 
 A record that disappears from its sources is not removed from a sink right away. It stays published

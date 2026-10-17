@@ -110,6 +110,20 @@ func (d *DNSServer) resolveMX(name string) iter.Seq[dnssrv.RR] {
 	})
 }
 
+func (d *DNSServer) resolveTXT(name string) iter.Seq[dnssrv.RR] {
+	return d.resolve(name, dns.TXT, func(rec dns.Record) dnssrv.RR {
+		return &dnssrv.TXT{
+			Hdr: dnssrv.RR_Header{
+				Name:   name,
+				Rrtype: dnssrv.TypeTXT,
+				Class:  dnssrv.ClassINET,
+				Ttl:    uint32(rec.TTL),
+			},
+			Txt: dns.TxtChunks(rec.Text),
+		}
+	})
+}
+
 func (d *DNSServer) resolveHTTPS(name string) (*dnssrv.HTTPS, bool) {
 	recs := d.store.get(name, dns.HTTPS)
 	if len(recs) == 0 {

@@ -107,11 +107,11 @@ func TestReadTimeout(t *testing.T) {
 }
 
 func TestReadUnsupportedType(t *testing.T) {
-	srv := serve(t, []dns.Record{{Type: "TXT", Name: "a.example.com."}})
+	srv := serve(t, []dns.Record{{Type: "NS", Name: "a.example.com."}})
 
 	h, err := New(slog.Default(), Config{URL: srv.URL}, "http.test")
 	require.NoError(t, err)
 
 	_, err = h.Read(context.Background())
-	require.ErrorContains(t, err, "TXT")
+	require.ErrorContains(t, err, "NS")
 }
