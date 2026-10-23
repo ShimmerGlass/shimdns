@@ -105,31 +105,32 @@ func (t *Traefik) readAddress(ctx context.Context) ([]dns.Record, error) {
 
 	res := []dns.Record{}
 
+	// a host served by several routers gets one record per address and a
+	// single HTTPS record with the ALPNs of all its TLS routers
+	seenAddrs := map[string]map[netip.Addr]bool{}
+	httpsRecs := map[string]*dns.Record{}
+	var httpsHosts []string
+
 	for _, router := range routers {
 		for host := range routersHosts(router) {
 			host = dns.NormName(host)
 
-			httpsRec := dns.Record{
-				Type:     dns.HTTPS,
-				Target:   ".",
-				TTL:      t.cfg.TTL,
-				Priority: 1,
-				Name:     host,
-				Alpn:     []string{dns.AlpnHTTP11},
-				Source:   t.id,
+			if seenAddrs[host] == nil {
+				seenAddrs[host] = map[netip.Addr]bool{}
 			}
 
-			seenAddrs := map[netip.Addr]bool{}
+			alpn := []string{dns.AlpnHTTP11}
+			resolved := false
 			for _, ep := range router.EntryPoints {
 				if !t.entrypointAllowed(ep) {
 					continue
 				}
 
 				if epHTTP2[ep] {
-					httpsRec.Alpn = append(httpsRec.Alpn, dns.AlpnHTTP2)
+					alpn = append(alpn, dns.AlpnHTTP2)
 				}
 				if epHTTP3[ep] {
-					httpsRec.Alpn = append(httpsRec.Alpn, dns.AlpnHTTP3)
+					alpn = append(alpn, dns.AlpnHTTP3)
 				}
 
 				addrs := t.cfg.Addresses
@@ -139,11 +140,13 @@ func (t *Traefik) readAddress(ctx context.Context) ([]dns.Record, error) {
 				}
 
 				for _, addr := range addrs {
-					if seenAddrs[addr] {
+					resolved = true
+
+					if seenAddrs[host][addr] {
 						continue
 					}
 
-					seenAddrs[addr] = true
+					seenAddrs[host][addr] = true
 
 					rec := dns.Record{
 						Name:    host,
@@ -164,11 +167,32 @@ func (t *Traefik) readAddress(ctx context.Context) ([]dns.Record, error) {
 
 			// only advertise HTTPS for TLS hosts that resolve through this source,
 			// whatever issues their certificate
-			if router.TLS != nil && len(seenAddrs) > 0 {
-				httpsRec.Alpn = lo.Uniq(httpsRec.Alpn)
-				res = append(res, httpsRec)
+			if router.TLS == nil || !resolved {
+				continue
 			}
+
+			httpsRec, ok := httpsRecs[host]
+			if !ok {
+				httpsRec = &dns.Record{
+					Type:     dns.HTTPS,
+					Target:   ".",
+					TTL:      t.cfg.TTL,
+					Priority: 1,
+					Name:     host,
+					Source:   t.id,
+				}
+				httpsRecs[host] = httpsRec
+				httpsHosts = append(httpsHosts, host)
+			}
+
+			httpsRec.Alpn = append(httpsRec.Alpn, alpn...)
 		}
+	}
+
+	for _, host := range httpsHosts {
+		rec := httpsRecs[host]
+		rec.Alpn = sortAlpn(lo.Uniq(rec.Alpn))
+		res = append(res, *rec)
 	}
 
 	return res, nil
@@ -250,6 +274,17 @@ func getAll[T any](ctx context.Context, baseURL, path string) ([]T, error) {
 }
 
 var hostReg = regexp.MustCompile("Host\\(['\"`]([^'\"`]+)['\"`]\\)")
+
+var alpnOrder = []string{dns.AlpnHTTP11, dns.AlpnHTTP2, dns.AlpnHTTP3}
+
+// sortAlpn orders ALPNs the same way whatever the routers' order, so the
+// record doesn't change between reads
+func sortAlpn(alpn []string) []string {
+	slices.SortFunc(alpn, func(a, b string) int {
+		return slices.Index(alpnOrder, a) - slices.Index(alpnOrder, b)
+	})
+	return alpn
+}
 
 func routersHosts(router router) iter.Seq[string] {
 	matches := hostReg.FindAllStringSubmatch(router.Rule, -1)
