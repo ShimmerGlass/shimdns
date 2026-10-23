@@ -174,8 +174,7 @@ func recRValue(r dns.Record) string {
 		// one quoted string per 255 bytes, `\` and `"` escaped
 		var parts []string
 		for _, c := range dns.TxtChunks(r.Text) {
-			c = strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(c)
-			parts = append(parts, `"`+c+`"`)
+			parts = append(parts, dns.Quote(c))
 		}
 
 		return strings.Join(parts, " ")

@@ -152,6 +152,9 @@ func (d *DNSServer) answer(q dnssrv.Question, res *dnssrv.Msg) {
 	case dnssrv.TypeTXT:
 		res.Answer = appendSeq(res.Answer, d.resolveTXT(name))
 
+	case dnssrv.TypeCAA:
+		res.Answer = appendSeq(res.Answer, d.resolveCAA(name))
+
 	case dnssrv.TypeHTTPS:
 		https, ok := d.resolveHTTPS(name)
 		if !ok {

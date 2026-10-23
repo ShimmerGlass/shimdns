@@ -18,10 +18,11 @@ const (
 	HTTPS = "HTTPS"
 	ALIAS = "ALIAS"
 	TXT   = "TXT"
+	CAA   = "CAA"
 )
 
 // Types lists the supported record types
-var Types = []string{A, AAAA, PTR, CNAME, SRV, MX, HTTPS, ALIAS, TXT}
+var Types = []string{A, AAAA, PTR, CNAME, SRV, MX, HTTPS, ALIAS, TXT, CAA}
 
 func ValidType(t string) bool {
 	return slices.Contains(Types, t)
@@ -58,6 +59,15 @@ type Record struct {
 	Alpn []string `json:"alpn,omitempty" expr:"alpn" yaml:"alpn"`
 	// for TXT
 	Text string `json:"text,omitempty" expr:"text" yaml:"text"`
+	// for CAA
+	Flags int    `json:"flags,omitempty" expr:"flags" yaml:"flags"`
+	Tag   string `json:"tag,omitempty" expr:"tag" yaml:"tag"`
+	Value string `json:"value,omitempty" expr:"value" yaml:"value"`
+}
+
+// Quote wraps a character-string in double quotes, escaping `\` and `"`.
+func Quote(s string) string {
+	return `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(s) + `"`
 }
 
 // TxtChunks splits a TXT value into the character-strings of at most 255
@@ -93,6 +103,9 @@ func (r Record) RData() string {
 
 	case TXT:
 		return r.Text
+
+	case CAA:
+		return fmt.Sprintf("%d %s %s", r.Flags, r.Tag, Quote(r.Value))
 
 	case SRV:
 		return fmt.Sprintf("%d %d %d %s", r.Priority, r.Weight, r.Port, r.Target)
@@ -132,6 +145,13 @@ func (r Record) LogValue() slog.Value {
 
 	case TXT:
 		attrs = append(attrs, slog.String("text", r.Text))
+
+	case CAA:
+		attrs = append(attrs,
+			slog.Int("flags", r.Flags),
+			slog.String("tag", r.Tag),
+			slog.String("value", r.Value),
+		)
 
 	case SRV:
 		attrs = append(attrs,

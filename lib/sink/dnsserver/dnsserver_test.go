@@ -295,6 +295,26 @@ func TestTXT(t *testing.T) {
 	require.Equal(t, []string{long[:255], long[255:]}, res.Answer[1].(*dnssrv.TXT).Txt)
 }
 
+func TestCAA(t *testing.T) {
+	d := newTestServer(t, Config{}, []dns.Record{
+		{Type: dns.CAA, Name: "example.com.", TTL: 60, Tag: "issue", Value: "letsencrypt.org"},
+		{Type: dns.CAA, Name: "example.com.", TTL: 60, Flags: 128, Tag: "iodef", Value: "mailto:ca@example.com"},
+	})
+
+	res := query(t, d, "example.com.", dnssrv.TypeCAA)
+	require.Len(t, res.Answer, 2)
+
+	caa := res.Answer[0].(*dnssrv.CAA)
+	require.Equal(t, uint8(0), caa.Flag)
+	require.Equal(t, "issue", caa.Tag)
+	require.Equal(t, "letsencrypt.org", caa.Value)
+
+	caa = res.Answer[1].(*dnssrv.CAA)
+	require.Equal(t, uint8(128), caa.Flag)
+	require.Equal(t, "iodef", caa.Tag)
+	require.Equal(t, "mailto:ca@example.com", caa.Value)
+}
+
 func TestNoData(t *testing.T) {
 	d := newTestServer(t, Config{}, records)
 

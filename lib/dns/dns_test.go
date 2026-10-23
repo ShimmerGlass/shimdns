@@ -112,7 +112,7 @@ func TestRecordLogValue(t *testing.T) {
 }
 
 func TestValidType(t *testing.T) {
-	for _, typ := range []string{A, AAAA, PTR, CNAME, SRV, MX, HTTPS, ALIAS, TXT} {
+	for _, typ := range []string{A, AAAA, PTR, CNAME, SRV, MX, HTTPS, ALIAS, TXT, CAA} {
 		require.True(t, ValidType(typ), typ)
 	}
 
@@ -125,6 +125,11 @@ func TestTxtChunks(t *testing.T) {
 	require.Equal(t, []string{""}, TxtChunks(""))
 	require.Equal(t, []string{"abc"}, TxtChunks("abc"))
 	require.Equal(t, []string{strings.Repeat("a", 255), "b"}, TxtChunks(strings.Repeat("a", 255)+"b"))
+}
+
+func TestCAARData(t *testing.T) {
+	require.Equal(t, `0 issue "letsencrypt.org"`, Record{Type: CAA, Tag: "issue", Value: "letsencrypt.org"}.RData())
+	require.Equal(t, `128 iodef "a \"b\" c\\d"`, Record{Type: CAA, Flags: 128, Tag: "iodef", Value: `a "b" c\d`}.RData())
 }
 
 func TestUnknownTypeDoesNotPanic(t *testing.T) {

@@ -38,6 +38,12 @@ records:
     name: example.com.
     ttl: 300
     target: site.scw.cloud.
+  - type: CAA
+    name: example.com.
+    ttl: 300
+    flags: 128
+    tag: issue
+    value: letsencrypt.org
 `), 0o600))
 
 	f, err := New(slog.Default(), Config{Path: path}, "file.test")
@@ -52,6 +58,7 @@ records:
 		{Type: dns.HTTPS, Name: "a.example.com.", Priority: 1, Target: ".", Alpn: []string{"h2", "h3"}, Source: "file.test"},
 		{Type: dns.TXT, Name: "example.com.", TTL: 300, Text: "v=spf1 include:_mailcust.gandi.net ?all", Source: "file.test"},
 		{Type: dns.ALIAS, Name: "example.com.", TTL: 300, Target: "site.scw.cloud.", Source: "file.test"},
+		{Type: dns.CAA, Name: "example.com.", TTL: 300, Flags: 128, Tag: "issue", Value: "letsencrypt.org", Source: "file.test"},
 	}, recs)
 }
 

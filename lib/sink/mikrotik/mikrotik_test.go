@@ -163,6 +163,7 @@ func TestWriteUnsupportedTypes(t *testing.T) {
 		dns.Record{Type: dns.MX, Name: "example.com.", TTL: 60, Mx: "a.example.com."},
 		dns.Record{Type: dns.TXT, Name: "example.com.", TTL: 60, Text: "x"},
 		dns.Record{Type: dns.ALIAS, Name: "example.com.", TTL: 60, Target: "a.example.com."},
+		dns.Record{Type: dns.CAA, Name: "example.com.", TTL: 60, Tag: "issue", Value: "letsencrypt.org"},
 	)
 
 	require.NoError(t, m.Write(context.Background(), recs))

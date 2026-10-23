@@ -36,6 +36,24 @@ records:
     text: v=spf1 include:_mailcust.gandi.net ?all
 ```
 
+## CAA records
+
+`CAA` lists the certificate authorities allowed to issue certificates for a name. It uses `flags`
+(default `0`, `128` marks the property critical), `tag` (`issue`, `issuewild` or `iodef`) and
+`value`. The `gandi` sink and the integrated DNS server publish it.
+
+```yaml
+records:
+  - name: example.com.
+    type: CAA
+    tag: issue
+    value: letsencrypt.org
+  - name: example.com.
+    type: CAA
+    tag: iodef
+    value: mailto:security@example.com
+```
+
 ## ALIAS records
 
 `ALIAS` points a name at another hostname where a `CNAME` is not allowed, such as a zone apex. It

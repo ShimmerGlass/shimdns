@@ -124,6 +124,22 @@ func (d *DNSServer) resolveTXT(name string) iter.Seq[dnssrv.RR] {
 	})
 }
 
+func (d *DNSServer) resolveCAA(name string) iter.Seq[dnssrv.RR] {
+	return d.resolve(name, dns.CAA, func(rec dns.Record) dnssrv.RR {
+		return &dnssrv.CAA{
+			Hdr: dnssrv.RR_Header{
+				Name:   name,
+				Rrtype: dnssrv.TypeCAA,
+				Class:  dnssrv.ClassINET,
+				Ttl:    uint32(rec.TTL),
+			},
+			Flag:  uint8(rec.Flags),
+			Tag:   rec.Tag,
+			Value: rec.Value,
+		}
+	})
+}
+
 func (d *DNSServer) resolveHTTPS(name string) (*dnssrv.HTTPS, bool) {
 	recs := d.store.get(name, dns.HTTPS)
 	if len(recs) == 0 {

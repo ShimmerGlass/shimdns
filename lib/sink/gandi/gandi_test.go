@@ -62,6 +62,11 @@ func TestBuildDomainTXT(t *testing.T) {
 	}, recs)
 }
 
+func TestRecordRValueCAA(t *testing.T) {
+	require.Equal(t, `0 issue "letsencrypt.org"`, recRValue(dns.Record{Type: dns.CAA, Tag: "issue", Value: "letsencrypt.org"}))
+	require.Equal(t, `0 issuewild ";"`, recRValue(dns.Record{Type: dns.CAA, Tag: "issuewild", Value: ";"}))
+}
+
 func TestRecordRValueAlias(t *testing.T) {
 	require.Equal(t, "site.scw.cloud.", recRValue(dns.Record{Type: dns.ALIAS, Target: "site.scw.cloud."}))
 	require.Equal(t, "site.scw.cloud.", recRValue(dns.Record{Type: dns.ALIAS, Target: "site.scw.cloud"}))
