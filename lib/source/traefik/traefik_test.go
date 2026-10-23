@@ -135,6 +135,39 @@ func TestReadAddress(t *testing.T) {
 	require.Equal(t, want, recs)
 }
 
+func TestReadAddressTLSWithoutCertResolver(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/entrypoints":
+			_, _ = w.Write([]byte(entrypointsJSON))
+		case "/api/http/routers":
+			_, _ = w.Write([]byte(`[
+				{"entryPoints": ["websecure"], "rule": "Host(\"tls.example.com\")", "tls": {"options": "default"}, "name": "tls@docker"},
+				{"entryPoints": ["websecure"], "rule": "Host(\"plain.example.com\")", "tls": null, "name": "plain@docker"}
+			]`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	tr, err := New(slog.Default(), Config{URL: srv.URL, TTL: 60}, "traefik.test")
+	require.NoError(t, err)
+
+	recs, err := tr.Read(context.Background())
+	require.NoError(t, err)
+
+	want := []dns.Record{
+		a("plain.example.com.", "10.0.0.1"),
+		a("tls.example.com.", "10.0.0.1"),
+		{Type: dns.HTTPS, Name: "tls.example.com.", TTL: 60, Priority: 1, Target: ".", Alpn: []string{dns.AlpnHTTP11, dns.AlpnHTTP2, dns.AlpnHTTP3}, Source: "traefik.test"},
+	}
+
+	sortRecs(recs)
+	sortRecs(want)
+	require.Equal(t, want, recs)
+}
+
 func TestReadAddressStaticAddresses(t *testing.T) {
 	srv := serve(t)
 

@@ -162,8 +162,9 @@ func (t *Traefik) readAddress(ctx context.Context) ([]dns.Record, error) {
 				}
 			}
 
-			// only advertise HTTPS for hosts that resolve through this source
-			if router.TLS.CertResolver != "" && len(seenAddrs) > 0 {
+			// only advertise HTTPS for TLS hosts that resolve through this source,
+			// whatever issues their certificate
+			if router.TLS != nil && len(seenAddrs) > 0 {
 				httpsRec.Alpn = lo.Uniq(httpsRec.Alpn)
 				res = append(res, httpsRec)
 			}

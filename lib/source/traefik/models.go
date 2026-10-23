@@ -6,7 +6,8 @@ type router struct {
 	Service     string   `json:"service"`
 	Rule        string   `json:"rule"`
 	Priority    int      `json:"priority"`
-	TLS         struct {
+	// nil when the router doesn't serve TLS
+	TLS *struct {
 		Options      string `json:"options"`
 		CertResolver string `json:"certResolver"`
 	} `json:"tls"`
