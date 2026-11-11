@@ -56,3 +56,8 @@ func (s *store) has(name string) bool {
 	_, ok := s.names[strings.ToLower(name)]
 	return ok
 }
+
+// hasRecords reports whether name has records of its own.
+func (s *store) hasRecords(name string) bool {
+	return len(s.recs[strings.ToLower(name)]) > 0
+}

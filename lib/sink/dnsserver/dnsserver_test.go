@@ -2,10 +2,13 @@ package dnsserver
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net"
 	"net/netip"
+	"slices"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/ShimmerGlass/shimdns/lib/dns"
@@ -236,11 +239,33 @@ func TestCNAMEChain(t *testing.T) {
 func TestCNAMELoop(t *testing.T) {
 	d := newTestServer(t, Config{}, []dns.Record{
 		{Type: dns.CNAME, Name: "x.example.com.", TTL: 60, Target: "y.example.com."},
-		{Type: dns.CNAME, Name: "y.example.com.", TTL: 60, Target: "x.example.com."},
+		{Type: dns.CNAME, Name: "y.example.com.", TTL: 60, Target: "X.example.com."},
+		{Type: dns.CNAME, Name: "self.example.com.", TTL: 60, Target: "self.example.com."},
 	})
 
-	res := query(t, d, "x.example.com.", dnssrv.TypeA)
-	require.Len(t, res.Answer, maxCNAMEChain)
+	for _, name := range []string{"x.example.com.", "y.example.com.", "self.example.com."} {
+		res := query(t, d, name, dnssrv.TypeA)
+		require.Equal(t, dnssrv.RcodeServerFailure, res.Rcode, name)
+		require.Empty(t, res.Answer, name)
+	}
+}
+
+func TestCNAMEChainTooLong(t *testing.T) {
+	chain := func(n int) []dns.Record {
+		var recs []dns.Record
+		for i := range n {
+			recs = append(recs, dns.Record{Type: dns.CNAME, Name: fmt.Sprintf("c%d.example.com.", i), TTL: 60, Target: fmt.Sprintf("c%d.example.com.", i+1)})
+		}
+		return append(recs, dns.Record{Type: dns.A, Name: fmt.Sprintf("c%d.example.com.", n), TTL: 60, Address: netip.MustParseAddr("10.0.0.1")})
+	}
+
+	res := query(t, newTestServer(t, Config{}, chain(maxCNAMEChain)), "c0.example.com.", dnssrv.TypeA)
+	require.Equal(t, dnssrv.RcodeSuccess, res.Rcode)
+	require.Len(t, res.Answer, maxCNAMEChain+1)
+
+	res = query(t, newTestServer(t, Config{}, chain(maxCNAMEChain+1)), "c0.example.com.", dnssrv.TypeA)
+	require.Equal(t, dnssrv.RcodeServerFailure, res.Rcode)
+	require.Empty(t, res.Answer)
 }
 
 func TestCNAMEExternalTarget(t *testing.T) {
@@ -252,6 +277,192 @@ func TestCNAMEExternalTarget(t *testing.T) {
 	require.Equal(t, dnssrv.RcodeSuccess, res.Rcode)
 	require.Len(t, res.Answer, 1)
 	require.Equal(t, "elsewhere.example.org.", res.Answer[0].(*dnssrv.CNAME).Target)
+}
+
+// startUpstream serves recs from a second server on a local UDP port, as a
+// fake recursive resolver, and returns its address and a func listing the
+// questions it received.
+func startUpstream(t *testing.T, recs []dns.Record) (string, func() []dnssrv.Question) {
+	t.Helper()
+
+	up := newTestServer(t, Config{}, recs)
+
+	pc, err := net.ListenPacket("udp", "127.0.0.1:0")
+	require.NoError(t, err)
+
+	var (
+		mu      sync.Mutex
+		qs      []dnssrv.Question
+		started = make(chan struct{})
+	)
+	srv := &dnssrv.Server{
+		PacketConn:        pc,
+		NotifyStartedFunc: func() { close(started) },
+		Handler: dnssrv.HandlerFunc(func(w dnssrv.ResponseWriter, req *dnssrv.Msg) {
+			mu.Lock()
+			qs = append(qs, req.Question...)
+			mu.Unlock()
+			up.handler(w, req)
+		}),
+	}
+	go func() { _ = srv.ActivateAndServe() }()
+	<-started
+	t.Cleanup(func() { _ = srv.Shutdown() })
+
+	return pc.LocalAddr().String(), func() []dnssrv.Question {
+		mu.Lock()
+		defer mu.Unlock()
+		return slices.Clone(qs)
+	}
+}
+
+func TestCNAMEExternalTargetUpstream(t *testing.T) {
+	addr, qs := startUpstream(t, []dns.Record{
+		{Type: dns.CNAME, Name: "elsewhere.example.org.", TTL: 30, Target: "edge.example.net."},
+		{Type: dns.A, Name: "edge.example.net.", TTL: 30, Address: netip.MustParseAddr("192.0.2.7")},
+	})
+
+	d := newTestServer(t, Config{Upstream: addr}, []dns.Record{
+		{Type: dns.CNAME, Name: "x.example.com.", TTL: 60, Target: "y.example.com."},
+		{Type: dns.CNAME, Name: "y.example.com.", TTL: 60, Target: "elsewhere.example.org."},
+		{Type: dns.A, Name: "local.example.com.", TTL: 60, Address: netip.MustParseAddr("10.0.0.1")},
+		{Type: dns.CNAME, Name: "internal.example.com.", TTL: 60, Target: "local.example.com."},
+	})
+
+	res := query(t, d, "x.example.com.", dnssrv.TypeA)
+	require.Equal(t, dnssrv.RcodeSuccess, res.Rcode)
+	require.Len(t, res.Answer, 4)
+	require.Equal(t, "y.example.com.", res.Answer[0].(*dnssrv.CNAME).Target)
+	require.Equal(t, "elsewhere.example.org.", res.Answer[1].(*dnssrv.CNAME).Target)
+	require.Equal(t, "edge.example.net.", res.Answer[2].(*dnssrv.CNAME).Target)
+	require.Equal(t, "192.0.2.7", res.Answer[3].(*dnssrv.A).A.String())
+	require.Equal(t, []dnssrv.Question{{Name: "elsewhere.example.org.", Qtype: dnssrv.TypeA, Qclass: dnssrv.ClassINET}}, qs())
+
+	// targets in the store, names without CNAME and CNAME queries never reach the upstream
+	require.Len(t, query(t, d, "internal.example.com.", dnssrv.TypeA).Answer, 2)
+	require.Len(t, query(t, d, "local.example.com.", dnssrv.TypeAAAA).Answer, 0)
+	require.Len(t, query(t, d, "x.example.com.", dnssrv.TypeCNAME).Answer, 1)
+	require.Len(t, qs(), 1)
+}
+
+func TestCNAMEExternalTargetUpstreamNXDOMAIN(t *testing.T) {
+	addr, _ := startUpstream(t, nil)
+
+	d := newTestServer(t, Config{Upstream: addr}, []dns.Record{
+		{Type: dns.CNAME, Name: "x.example.com.", TTL: 60, Target: "gone.example.org."},
+	})
+
+	res := query(t, d, "x.example.com.", dnssrv.TypeA)
+	require.Equal(t, dnssrv.RcodeNameError, res.Rcode)
+	require.Len(t, res.Answer, 1)
+}
+
+func TestCNAMEExternalTargetUpstreamDown(t *testing.T) {
+	pc, err := net.ListenPacket("udp", "127.0.0.1:0")
+	require.NoError(t, err)
+	addr := pc.LocalAddr().String()
+	require.NoError(t, pc.Close())
+
+	d := newTestServer(t, Config{Upstream: addr}, []dns.Record{
+		{Type: dns.CNAME, Name: "x.example.com.", TTL: 60, Target: "elsewhere.example.org."},
+	})
+
+	res := query(t, d, "x.example.com.", dnssrv.TypeA)
+	require.Equal(t, dnssrv.RcodeServerFailure, res.Rcode)
+	require.Len(t, res.Answer, 1)
+}
+
+func TestCNAMEExternalTargetUpstreamServfail(t *testing.T) {
+	// a CNAME loop makes the fake upstream answer SERVFAIL
+	addr, _ := startUpstream(t, []dns.Record{
+		{Type: dns.CNAME, Name: "broken.example.org.", TTL: 60, Target: "broken.example.org."},
+	})
+
+	d := newTestServer(t, Config{Upstream: addr}, []dns.Record{
+		{Type: dns.CNAME, Name: "x.example.com.", TTL: 60, Target: "broken.example.org."},
+	})
+
+	res := query(t, d, "x.example.com.", dnssrv.TypeA)
+	require.Equal(t, dnssrv.RcodeServerFailure, res.Rcode)
+	require.Len(t, res.Answer, 1)
+}
+
+func TestCNAMEExternalTargetUpstreamTypes(t *testing.T) {
+	addr, qs := startUpstream(t, []dns.Record{
+		{Type: dns.AAAA, Name: "elsewhere.example.org.", TTL: 30, Address: netip.MustParseAddr("2001:db8::7")},
+	})
+
+	d := newTestServer(t, Config{Upstream: addr}, []dns.Record{
+		{Type: dns.CNAME, Name: "x.example.com.", TTL: 60, Target: "elsewhere.example.org."},
+	})
+
+	res := query(t, d, "x.example.com.", dnssrv.TypeAAAA)
+	require.Len(t, res.Answer, 2)
+	require.Equal(t, "2001:db8::7", res.Answer[1].(*dnssrv.AAAA).AAAA.String())
+
+	// ANY is not sent upstream
+	res = query(t, d, "x.example.com.", dnssrv.TypeANY)
+	require.Equal(t, dnssrv.RcodeSuccess, res.Rcode)
+	require.Len(t, res.Answer, 1)
+	require.Equal(t, []dnssrv.Question{{Name: "elsewhere.example.org.", Qtype: dnssrv.TypeAAAA, Qclass: dnssrv.ClassINET}}, qs())
+}
+
+// A target that only has names below it in the store has no records here, it
+// is looked up upstream like any external target.
+func TestCNAMEEmptyNonTerminalTarget(t *testing.T) {
+	addr, qs := startUpstream(t, []dns.Record{
+		{Type: dns.A, Name: "example.com.", TTL: 30, Address: netip.MustParseAddr("192.0.2.1")},
+	})
+
+	d := newTestServer(t, Config{Upstream: addr}, []dns.Record{
+		{Type: dns.A, Name: "a.example.com.", TTL: 60, Address: netip.MustParseAddr("10.0.0.1")},
+		{Type: dns.CNAME, Name: "www.example.com.", TTL: 60, Target: "example.com."},
+	})
+
+	res := query(t, d, "www.example.com.", dnssrv.TypeA)
+	require.Len(t, res.Answer, 2)
+	require.Equal(t, "192.0.2.1", res.Answer[1].(*dnssrv.A).A.String())
+	require.Len(t, qs(), 1)
+}
+
+func TestCNAMEExternalTargetTruncated(t *testing.T) {
+	var big []dns.Record
+	for i := range 60 {
+		big = append(big, dns.Record{Type: dns.A, Name: "big.example.org.", TTL: 30, Address: netip.AddrFrom4([4]byte{192, 0, 2, byte(i)})})
+	}
+	addr, _ := startUpstream(t, big)
+
+	d := newTestServer(t, Config{Upstream: addr}, []dns.Record{
+		{Type: dns.CNAME, Name: "x.example.com.", TTL: 60, Target: "big.example.org."},
+	})
+
+	// without EDNS the client accepts 512 bytes
+	res := query(t, d, "x.example.com.", dnssrv.TypeA)
+	require.True(t, res.Truncated)
+	require.LessOrEqual(t, res.Len(), dnssrv.MinMsgSize)
+
+	// with EDNS it gets everything
+	req := new(dnssrv.Msg)
+	req.SetQuestion("x.example.com.", dnssrv.TypeA)
+	req.SetEdns0(4096, false)
+	w := &fakeWriter{}
+	d.handler(w, req)
+	require.False(t, w.msg.Truncated)
+	require.Len(t, w.msg.Answer, 61)
+}
+
+func TestWithDefaultPort(t *testing.T) {
+	for in, want := range map[string]string{
+		"":                  "",
+		"192.168.1.53":      "192.168.1.53:53",
+		"192.168.1.53:5353": "192.168.1.53:5353",
+		"2001:db8::53":      "[2001:db8::53]:53",
+		"[2001:db8::53]":    "[2001:db8::53]:53",
+		"[2001:db8::53]:54": "[2001:db8::53]:54",
+		"dns.example.com":   "dns.example.com:53",
+	} {
+		require.Equal(t, want, withDefaultPort(in), in)
+	}
 }
 
 func TestUnknownName(t *testing.T) {

@@ -71,6 +71,29 @@ records:
 - Apex only: the `gandi` sink drops, with a warning, an `ALIAS` whose name is not the domain itself,
   or that shares its name with an `A`, `AAAA` or `CNAME` record.
 
+## CNAME records
+
+The integrated DNS server follows a `CNAME` chain through its own records and answers with the
+records of the final target, like a recursive resolver.
+
+```yaml
+sinks:
+  - type: dnsserver
+    listen_addr: :53
+    upstream: 192.168.1.53:53 # optional
+```
+
+- A target without records of its own is asked for at `upstream` (port 53 when none is given), with
+  recursion, and the answer is appended after the chain. Some stub resolvers (Android) don't chase a
+  `CNAME` themselves and fail on an answer that holds only the chain, so set it when clients reach the
+  server through a forwarder that passes answers through as they are (dnscrypt-proxy, dnsmasq). The
+  upstream must not forward the target's zone back to this server.
+- An upstream that fails (2s timeout) or answers an error gives `SERVFAIL`, so clients retry instead of
+  caching the chain alone. `ANY` queries are not sent upstream.
+- Without `upstream` the answer holds only the chain.
+- A chain that loops or is longer than 8 `CNAME`s answers `SERVFAIL`.
+- Answers larger than the client's UDP size (512 bytes without EDNS) are truncated.
+
 ## Removal grace
 
 A record that disappears from its sources is not removed from a sink right away. It stays published

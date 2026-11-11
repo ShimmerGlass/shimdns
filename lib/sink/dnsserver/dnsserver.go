@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net"
 	"net/netip"
+	"strings"
 	"sync"
 	"time"
 
@@ -15,8 +16,11 @@ import (
 
 const Type = "dnsserver"
 
-// maxCNAMEChain bounds CNAME resolution to avoid looping on cycles
+// maxCNAMEChain bounds the CNAME chains followed in the store
 const maxCNAMEChain = 8
+
+// upstreamTimeout bounds the query for a CNAME target outside the store
+const upstreamTimeout = 2 * time.Second
 
 type DNSServer struct {
 	log *slog.Logger
@@ -28,6 +32,8 @@ type DNSServer struct {
 }
 
 func New(log *slog.Logger, cfg Config, id string) (*DNSServer, error) {
+	cfg.Upstream = withDefaultPort(cfg.Upstream)
+
 	d := &DNSServer{
 		log:   log,
 		cfg:   cfg,
@@ -94,6 +100,13 @@ func (d *DNSServer) handler(w dnssrv.ResponseWriter, req *dnssrv.Msg) {
 		d.answer(q, res)
 	}
 
+	// upstream answers can be large, keep within what the client accepts over UDP
+	size := dnssrv.MinMsgSize
+	if opt := req.IsEdns0(); opt != nil {
+		size = max(size, int(opt.UDPSize()))
+	}
+	res.Truncate(size)
+
 	err := w.WriteMsg(res)
 	if err != nil {
 		d.log.Warn(err.Error())
@@ -106,6 +119,14 @@ func (d *DNSServer) answer(q dnssrv.Question, res *dnssrv.Msg) {
 		metricResponseTime.WithLabelValues(d.id, dnssrv.TypeToString[q.Qtype]).Observe(time.Since(start).Seconds())
 	}()
 
+	if external := d.answerLocal(q, res); external != "" {
+		d.answerUpstream(external, q.Qtype, res)
+	}
+}
+
+// answerLocal answers q from the store. When a CNAME chain leads out of the
+// store it returns the external target, whose records are not in res yet.
+func (d *DNSServer) answerLocal(q dnssrv.Question, res *dnssrv.Msg) string {
 	d.lock.RLock()
 	defer d.lock.RUnlock()
 
@@ -113,24 +134,39 @@ func (d *DNSServer) answer(q dnssrv.Question, res *dnssrv.Msg) {
 
 	if !d.store.has(name) {
 		res.Rcode = dnssrv.RcodeNameError
-		return
+		return ""
 	}
 
 	// follow CNAME chains within the store, the other records are then
 	// looked up on the final target
-	for range maxCNAMEChain {
+	// a loop runs past the limit too
+	answerStart := len(res.Answer)
+	hops := 0
+	for {
 		cname, ok := d.resolveCNAME(name)
 		if !ok {
 			break
 		}
 
+		hops++
+		if hops > maxCNAMEChain {
+			d.log.Warn("cname chain too long or looping", "name", q.Name)
+			res.Answer = res.Answer[:answerStart]
+			res.Rcode = dnssrv.RcodeServerFailure
+			return ""
+		}
+
 		res.Answer = append(res.Answer, cname)
 
 		if q.Qtype == dnssrv.TypeCNAME {
-			return
+			return ""
 		}
 
 		name = cname.Target
+	}
+
+	if hops > 0 && !d.store.hasRecords(name) {
+		return name
 	}
 
 	switch q.Qtype {
@@ -158,7 +194,7 @@ func (d *DNSServer) answer(q dnssrv.Question, res *dnssrv.Msg) {
 	case dnssrv.TypeHTTPS:
 		https, ok := d.resolveHTTPS(name)
 		if !ok {
-			return
+			return ""
 		}
 
 		res.Answer = append(res.Answer, https)
@@ -171,6 +207,53 @@ func (d *DNSServer) answer(q dnssrv.Question, res *dnssrv.Msg) {
 		res.Extra = appendSeq(res.Extra, d.resolveA(target))
 		res.Extra = appendSeq(res.Extra, d.resolveAAAA(target))
 	}
+
+	return ""
+}
+
+// answerUpstream completes a CNAME chain that leads out of the store with the
+// upstream's answer for its target, as a recursive resolver would. Stub
+// resolvers that don't chase CNAMEs themselves (Android) need it. A failed
+// upstream answers SERVFAIL so clients retry instead of caching the chain alone.
+func (d *DNSServer) answerUpstream(name string, qtype uint16, res *dnssrv.Msg) {
+	if d.cfg.Upstream == "" || qtype == dnssrv.TypeANY {
+		return
+	}
+
+	req := new(dnssrv.Msg)
+	req.SetQuestion(name, qtype)
+	req.SetEdns0(dnssrv.DefaultMsgSize, false)
+
+	client := &dnssrv.Client{Timeout: upstreamTimeout}
+	up, _, err := client.Exchange(req, d.cfg.Upstream)
+	if err == nil && up.Truncated {
+		client.Net = "tcp"
+		up, _, err = client.Exchange(req, d.cfg.Upstream)
+	}
+	if err != nil {
+		d.log.Warn("upstream query failed", "name", name, "upstream", d.cfg.Upstream, "err", err)
+		res.Rcode = dnssrv.RcodeServerFailure
+		return
+	}
+
+	switch up.Rcode {
+	case dnssrv.RcodeSuccess, dnssrv.RcodeNameError:
+		res.Answer = append(res.Answer, up.Answer...)
+		res.Rcode = up.Rcode
+	default:
+		res.Rcode = dnssrv.RcodeServerFailure
+	}
+}
+
+// withDefaultPort adds the DNS port to an address given without one.
+func withDefaultPort(addr string) string {
+	if addr == "" {
+		return ""
+	}
+	if _, _, err := net.SplitHostPort(addr); err == nil {
+		return addr
+	}
+	return net.JoinHostPort(strings.Trim(addr, "[]"), "53")
 }
 
 func addrNetipToNetDotIP(addr netip.Addr) net.IP {
