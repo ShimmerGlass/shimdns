@@ -28,7 +28,8 @@ type Prov struct {
 
 	sourceRecs map[source.Source][]dns.Record // last successful read of each source
 
-	now func() time.Time // injectable for tests
+	now      func() time.Time // injectable for tests
+	debounce time.Duration    // quiet time after a source's change before reading
 
 	// tracked holds every record seen and not yet forgotten, including the
 	// ones that disappeared from the sources less than the longest removal
@@ -57,20 +58,112 @@ func New(log *slog.Logger, interval time.Duration, sources []source.Source, modi
 		sinkStatus: map[sink.Sink]bool{},
 		sourceRecs: map[source.Source][]dns.Record{},
 		now:        time.Now,
+		debounce:   DefaultDebounce,
 		tracked:    map[string]*trackedRec{},
 		sinkPrev:   map[sink.Sink][]dns.Record{},
 	}, nil
 }
 
-func (p *Prov) Run(ctx context.Context) error {
-	tick := time.Tick(p.interval)
+// DefaultDebounce is how long Run waits after the last change notification
+// of a source before reading, so that a deploy writing several files causes
+// one update.
+const DefaultDebounce = time.Second
 
-	for ; ; <-tick {
-		err := p.runOnce(ctx)
-		if err != nil {
-			p.log.Error(err.Error())
+// Run updates the sinks every interval, and also soon after a source that
+// implements source.Notifier reports a change. All runs are sequential.
+func (p *Prov) Run(ctx context.Context) error {
+	changes := p.mergeChanges(ctx)
+
+	ticker := time.NewTicker(p.interval)
+	defer ticker.Stop()
+
+	p.update(ctx)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+		case <-changes:
+			if !p.waitQuiet(ctx, changes) {
+				return ctx.Err()
+			}
+			p.log.Debug("source changed")
+		}
+		p.update(ctx)
+	}
+}
+
+func (p *Prov) update(ctx context.Context) {
+	err := p.runOnce(ctx)
+	if err != nil {
+		p.log.Error(err.Error())
+	}
+}
+
+// waitQuiet returns once no change arrived for the debounce time, or after
+// an interval at most: a file rewritten without pause must not hold back the
+// other sources' periodic reads. It returns false if ctx is done first.
+func (p *Prov) waitQuiet(ctx context.Context, changes <-chan struct{}) bool {
+	timer := time.NewTimer(p.debounce)
+	defer timer.Stop()
+	limit := time.NewTimer(p.interval)
+	defer limit.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return false
+		case <-changes:
+			if !timer.Stop() {
+				select {
+				case <-timer.C:
+				default:
+				}
+			}
+			timer.Reset(p.debounce)
+		case <-timer.C:
+			return true
+		case <-limit.C:
+			return true
 		}
 	}
+}
+
+// mergeChanges merges the change channels of the sources that can notify.
+// The result never yields when none can.
+func (p *Prov) mergeChanges(ctx context.Context) <-chan struct{} {
+	out := make(chan struct{}, 1)
+
+	for _, src := range p.sources {
+		n, ok := src.(source.Notifier)
+		if !ok {
+			continue
+		}
+		ch := n.Changes(ctx)
+		if ch == nil {
+			continue
+		}
+
+		go func() {
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case _, ok := <-ch:
+					if !ok {
+						return
+					}
+					select {
+					case out <- struct{}{}:
+					default:
+					}
+				}
+			}
+		}()
+	}
+
+	return out
 }
 
 func (p *Prov) runOnce(ctx context.Context) error {

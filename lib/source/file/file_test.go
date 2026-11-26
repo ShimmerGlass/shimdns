@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/ShimmerGlass/shimdns/lib/dns"
 	"github.com/stretchr/testify/require"
@@ -90,4 +91,71 @@ func TestReadUnsupportedType(t *testing.T) {
 
 	_, err = f.Read(context.Background())
 	require.ErrorContains(t, err, "NS")
+}
+
+func waitChange(t *testing.T, ch <-chan struct{}) bool {
+	t.Helper()
+	select {
+	case <-ch:
+		return true
+	case <-time.After(2 * time.Second):
+		return false
+	}
+}
+
+func drain(ch <-chan struct{}) {
+	for {
+		select {
+		case <-ch:
+		case <-time.After(200 * time.Millisecond):
+			return
+		}
+	}
+}
+
+func TestChanges(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "records.yaml")
+	require.NoError(t, os.WriteFile(path, []byte("records: []"), 0o600))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	f, err := New(slog.Default(), Config{Path: path}, "file.test")
+	require.NoError(t, err)
+	ch := f.Changes(ctx)
+	require.NotNil(t, ch)
+
+	t.Run("in place", func(t *testing.T) {
+		require.NoError(t, os.WriteFile(path, []byte("records: [] # 1"), 0o600))
+		require.True(t, waitChange(t, ch))
+	})
+	drain(ch)
+
+	t.Run("rename into place", func(t *testing.T) {
+		tmp := filepath.Join(dir, "records.yaml.tmp")
+		require.NoError(t, os.WriteFile(tmp, []byte("records: [] # 2"), 0o600))
+		drain(ch)
+		require.NoError(t, os.Rename(tmp, path))
+		require.True(t, waitChange(t, ch))
+	})
+	drain(ch)
+
+	t.Run("unrelated file", func(t *testing.T) {
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "other.yaml"), []byte("x"), 0o600))
+		require.False(t, waitChange(t, ch))
+	})
+}
+
+func TestChangesDisabled(t *testing.T) {
+	no := false
+	f, err := New(slog.Default(), Config{Path: filepath.Join(t.TempDir(), "a.yaml"), Watch: &no}, "file.test")
+	require.NoError(t, err)
+	require.Nil(t, f.Changes(context.Background()))
+}
+
+func TestChangesMissingDir(t *testing.T) {
+	f, err := New(slog.Default(), Config{Path: filepath.Join(t.TempDir(), "nodir", "a.yaml")}, "file.test")
+	require.NoError(t, err)
+	require.Nil(t, f.Changes(context.Background()))
 }

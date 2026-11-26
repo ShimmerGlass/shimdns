@@ -5,6 +5,7 @@ go 1.25.1
 require (
 	github.com/a-h/templ v0.3.960
 	github.com/expr-lang/expr v1.17.6
+	github.com/fsnotify/fsnotify v1.9.0
 	github.com/miekg/dns v1.1.68
 	github.com/netbox-community/go-netbox/v4 v4.3.0
 	github.com/prometheus/client_golang v1.23.2
@@ -36,7 +37,6 @@ require (
 	github.com/elliotchance/orderedmap/v3 v3.1.0 // indirect
 	github.com/emirpasic/gods v1.18.1 // indirect
 	github.com/fatih/color v1.18.0 // indirect
-	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/go-git/gcfg v1.5.1-0.20230307220236-3a3c6141e376 // indirect
 	github.com/go-git/go-billy/v5 v5.6.2 // indirect
 	github.com/go-git/go-git/v5 v5.16.2 // indirect

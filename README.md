@@ -9,7 +9,7 @@ ShimDNS runs a a daemon on a configured interval and dynamically updates DNS rec
 - Traefik
 - Mikrotik DHCP leases
 - Netbox
-- File
+- File. Also watches its file's directory: a change is read about a second later instead of at the next interval. Set `watch: false` on the source to poll only.
 - HTTP
 
 ## Supported sinks

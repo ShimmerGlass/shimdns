@@ -389,3 +389,50 @@ func TestGracePerSink(t *testing.T) {
 	require.Len(t, public.writes, 2)
 	require.Empty(t, public.last())
 }
+
+type notifySource struct {
+	fakeSource
+	ch    chan struct{}
+	lock  sync.Mutex
+	reads int
+}
+
+func (s *notifySource) Changes(ctx context.Context) <-chan struct{} { return s.ch }
+
+func (s *notifySource) Read(ctx context.Context) ([]dns.Record, error) {
+	s.lock.Lock()
+	s.reads++
+	s.lock.Unlock()
+	return s.fakeSource.Read(ctx)
+}
+
+func (s *notifySource) count() int {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+	return s.reads
+}
+
+func TestRunChangeTriggersUpdate(t *testing.T) {
+	src := &notifySource{fakeSource: fakeSource{id: "n"}, ch: make(chan struct{}, 10)}
+	p, err := New(slog.Default(), time.Hour, []source.Source{src}, nil, nil)
+	require.NoError(t, err)
+	p.debounce = 50 * time.Millisecond
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error)
+	go func() { done <- p.Run(ctx) }()
+
+	require.Eventually(t, func() bool { return src.count() == 1 }, 2*time.Second, 5*time.Millisecond)
+
+	// several quick notifications: one run
+	for range 5 {
+		src.ch <- struct{}{}
+		time.Sleep(5 * time.Millisecond)
+	}
+	require.Eventually(t, func() bool { return src.count() == 2 }, 2*time.Second, 5*time.Millisecond)
+	time.Sleep(200 * time.Millisecond)
+	require.Equal(t, 2, src.count())
+
+	cancel()
+	require.ErrorIs(t, <-done, context.Canceled)
+}
